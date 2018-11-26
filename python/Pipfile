@@ -4,6 +4,8 @@ name = "pypi"
 verify_ssl = true
 
 [packages]
+cryptography = "*"
+
 # tests
 #pytest = "*"
 #pylint = "*"
