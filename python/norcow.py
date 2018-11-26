@@ -30,7 +30,7 @@ class Norcow:
 
     def set(self, key: int, val: bytes) -> bool:
         if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
-            self.compact()
+            self._compact()
         data = pack("<HH", key, len(val)) + align4(val)
         self.sectors[self.active_sector][
             self.active_offset : self.active_offset + len(data)
