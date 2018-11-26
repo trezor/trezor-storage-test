@@ -1,0 +1,17 @@
+[[source]]
+url = "https://pypi.org/simple"
+name = "pypi"
+verify_ssl = true
+
+[packages]
+# tests
+#pytest = "*"
+#pylint = "*"
+
+# style
+isort = "*"
+flake8 = "*"
+black = "*"
+
+[pipenv]
+allow_prereleases = true
