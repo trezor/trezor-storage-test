@@ -1,8 +1,7 @@
 from .norcow import Norcow
-from struct import pack
+
 
 class Storage:
-
     def init(self) -> None:
         self.nc = Norcow()
         self.initialized = False
