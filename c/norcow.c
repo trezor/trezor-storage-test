@@ -27,6 +27,10 @@
 #define NORCOW_MAGIC      ((uint32_t)0x5743524e)
 #define NORCOW_MAGIC_LEN  (sizeof(uint32_t))
 
+#define NORCOW_WORD_SIZE  (sizeof(uint32_t))
+#define NORCOW_PREFIX_LEN NORCOW_WORD_SIZE
+
+
 static const uint8_t norcow_sectors[NORCOW_SECTOR_COUNT] = NORCOW_SECTORS;
 static uint8_t norcow_active_sector = 0;
 static uint32_t norcow_active_offset = NORCOW_MAGIC_LEN;
@@ -49,19 +53,24 @@ static secbool norcow_write(uint8_t sector, uint32_t offset, uint32_t prefix, co
     if (sector >= NORCOW_SECTOR_COUNT) {
         return secfalse;
     }
+
+    if (offset + NORCOW_PREFIX_LEN + len > NORCOW_SECTOR_SIZE) {
+        return secfalse;
+    }
+
     ensure(flash_unlock(), NULL);
 
     // write prefix
     ensure(flash_write_word(norcow_sectors[sector], offset, prefix), NULL);
 
     if (len > 0) {
-        offset += sizeof(uint32_t);
+        offset += NORCOW_PREFIX_LEN;
         // write data
         for (uint16_t i = 0; i < len; i++, offset++) {
             ensure(flash_write_byte(norcow_sectors[sector], offset, data[i]), NULL);
         }
         // pad with zeroes
-        for (; offset % 4; offset++) {
+        for (; offset % NORCOW_WORD_SIZE; offset++) {
             ensure(flash_write_byte(norcow_sectors[sector], offset, 0x00), NULL);
         }
     }
@@ -116,7 +125,7 @@ static secbool read_item(uint8_t sector, uint32_t offset, uint16_t *key, const v
 static secbool write_item(uint8_t sector, uint32_t offset, uint16_t key, const void *val, uint16_t len, uint32_t *pos)
 {
     uint32_t prefix = (len << 16) | key;
-    *pos = offset + sizeof(uint32_t) + len;
+    *pos = offset + NORCOW_PREFIX_LEN + len;
     ALIGN4(*pos);
     return norcow_write(sector, offset, prefix, val, len);
 }
@@ -143,6 +152,44 @@ static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_
         offset = pos;
     }
     return sectrue * (*val != NULL);
+}
+
+/*
+ * Erases all items with the given key, which start before the given maximum offset.
+ */
+static secbool erase_item(uint8_t sector, uint16_t key, uint32_t max_offset)
+{
+    if (sector >= NORCOW_SECTOR_COUNT) {
+        return secfalse;
+    }
+
+    uint32_t offset = NORCOW_MAGIC_LEN;
+    uint16_t k;
+    uint16_t len;
+    const void *val;
+    uint32_t pos;
+    while (offset < max_offset && secfalse != read_item(sector, offset, &k, &val, &len, &pos)) {
+        if (key == k) {
+            ensure(flash_unlock(), NULL);
+
+            // update prefix to indicate that the item has been erased
+            uint32_t prefix = len << 16;
+            ensure(flash_write_word(norcow_sectors[sector], offset, prefix), NULL);
+            offset += NORCOW_PREFIX_LEN;
+
+            // erase data
+            uint32_t end = offset + len;
+            while (offset < end) {
+                ensure(flash_write_word(norcow_sectors[sector], offset, 0x00000000), NULL);
+                offset += NORCOW_WORD_SIZE;
+            }
+
+            ensure(flash_lock(), NULL);
+        }
+        offset = pos;
+    }
+
+    return sectrue;
 }
 
 /*
@@ -271,13 +318,14 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
 {
     // check whether there is enough free space
     // and compact if full
-    if (norcow_active_offset + sizeof(uint32_t) + len > NORCOW_SECTOR_SIZE) {
+    if (norcow_active_offset + NORCOW_PREFIX_LEN + len > NORCOW_SECTOR_SIZE) {
         compact();
     }
     // write item
     uint32_t pos;
     secbool r = write_item(norcow_active_sector, norcow_active_offset, key, val, len, &pos);
     if (sectrue == r) {
+        erase_item(norcow_active_sector, key, norcow_active_offset);
         norcow_active_offset = pos;
     }
     return r;
