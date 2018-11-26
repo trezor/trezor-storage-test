@@ -26,11 +26,13 @@ class Storage:
         return sectrue == self.lib.storage_change_pin(c.c_uint32(oldpin), c.c_uint32(newpin))
 
     def get(self, key: int) -> bytes:
-        val_ptr = c.c_void_p()
         val_len = c.c_uint16()
-        if sectrue != self.lib.storage_get(c.c_uint16(key), c.byref(val_ptr), c.byref(val_len)):
-            raise RuntimeError("storage_get failed")
-        return c.string_at(val_ptr, size=val_len.value)
+        if sectrue != self.lib.storage_get(c.c_uint16(key), None, 0, c.byref(val_len)):
+            raise RuntimeError("storage_get_len failed")
+        s = c.create_string_buffer(val_len.value)
+        if sectrue != self.lib.storage_get(c.c_uint16(key), s, val_len, c.byref(val_len)):
+            raise RuntimeError("storage_get_data failed")
+        return s.value
 
     def set(self, key: int, val: bytes) -> bool:
         return sectrue == self.lib.storage_set(c.c_uint16(key), val, c.c_uint16(len(val)))

@@ -22,23 +22,102 @@
 #include "common.h"
 #include "norcow.h"
 #include "storage.h"
-
-// Norcow storage key of configured PIN.
-#define PIN_KEY 0x0000
-
-// Maximum PIN length.
-#define PIN_MAXLEN 32
+#include "pbkdf2.h"
+#include "rand.h"
+#include "memzero.h"
+#include "chacha20poly1305/rfc7539.h"
 
 // Byte-length of flash section containing fail counters.
 #define PIN_FAIL_KEY 0x0001
 #define PIN_FAIL_SECTOR_SIZE 32
 
+// Norcow storage key of the combined salt, EDEK and PIN verification code entry.
+#define EDEK_PVC_KEY 0x0002
+
+// Norcow storage key of the PIN set flag.
+#define PIN_NOT_SET_KEY 0x0003
+
+// The PIN value corresponding to an empty PIN.
+#define PIN_EMPTY 1
+
 // Maximum number of failed unlock attempts.
 #define PIN_MAX_TRIES 15
+
+// The total number of iterations to use in PBKDF2.
+#define PIN_ITER_COUNT 20000
+
+// If the top bit of APP is set, then the value is not encrypted.
+#define FLAG_PUBLIC 0x80
+
+// The length of the data encryption key in bytes.
+#define DEK_SIZE 32
+
+// The length of the random salt in bytes.
+#define PIN_SALT_SIZE 4
+
+// The length of the PIN verification code in bytes.
+#define PVC_SIZE 8
+
+// The length of the Poly1305 MAC in bytes.
+#define POLY1305_MAC_SIZE 16
+
+// The length of the ChaCha20 IV (aka nonce) in bytes as per RFC 7539.
+#define CHACHA_IV_SIZE 12
 
 static secbool initialized = secfalse;
 static secbool unlocked = secfalse;
 static PIN_UI_WAIT_CALLBACK ui_callback = NULL;
+static uint8_t cached_dek[DEK_SIZE];
+static const uint8_t TRUE_BYTE = 1;
+static const uint8_t FALSE_BYTE = 0;
+
+void derive_kek(uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
+{
+    // TODO Add more salt
+
+    PBKDF2_HMAC_SHA256_CTX ctx;
+    pbkdf2_hmac_sha256_Init(&ctx, (const uint8_t*) &pin, sizeof(pin), salt, PIN_SALT_SIZE, 1);
+    pbkdf2_hmac_sha256_Update(&ctx, PIN_ITER_COUNT/2);
+    pbkdf2_hmac_sha256_Final(&ctx, kek);
+    pbkdf2_hmac_sha256_Init(&ctx, (const uint8_t*) &pin, sizeof(pin), salt, PIN_SALT_SIZE, 2);
+    pbkdf2_hmac_sha256_Update(&ctx, PIN_ITER_COUNT/2);
+    pbkdf2_hmac_sha256_Final(&ctx, keiv);
+    memzero(&ctx, sizeof(PBKDF2_HMAC_SHA256_CTX));
+}
+
+static secbool set_pin(const uint32_t pin)
+{
+    uint8_t buffer[PIN_SALT_SIZE + DEK_SIZE + POLY1305_MAC_SIZE];
+    uint8_t *salt = buffer;
+    uint8_t *edek = buffer + PIN_SALT_SIZE;
+    uint8_t *pvc = buffer + PIN_SALT_SIZE + DEK_SIZE;
+
+    uint8_t kek[SHA256_DIGEST_LENGTH];
+    uint8_t keiv[SHA256_DIGEST_LENGTH];
+    chacha20poly1305_ctx ctx;
+    random_buffer(salt, PIN_SALT_SIZE);
+    derive_kek(pin, salt, kek, keiv);
+    ctx.chacha20.input[12] = 0; // TODO Remove when the rfc7539_init() bug is fixed.
+    rfc7539_init(&ctx, kek, keiv);
+    memzero(kek, sizeof(kek));
+    memzero(keiv, sizeof(keiv));
+    chacha20poly1305_encrypt(&ctx, cached_dek, edek, DEK_SIZE);
+    rfc7539_finish(&ctx, 0, DEK_SIZE, pvc);
+    memzero(&ctx, sizeof(ctx));
+    secbool ret = norcow_set(EDEK_PVC_KEY, buffer, PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE);
+    memzero(buffer, sizeof(buffer));
+
+    if (ret == sectrue)
+    {
+        if (pin == PIN_EMPTY) {
+            norcow_set(PIN_NOT_SET_KEY, &TRUE_BYTE, 1);
+        } else {
+            norcow_set(PIN_NOT_SET_KEY, &FALSE_BYTE, 0);
+        }
+    }
+
+    return ret;
+}
 
 void storage_init(PIN_UI_WAIT_CALLBACK callback)
 {
@@ -47,6 +126,14 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback)
     norcow_init();
     initialized = sectrue;
     ui_callback = callback;
+
+    // If there is no EDEK, then generate a random DEK and store it.
+    const void *val;
+    uint16_t len;
+    if (secfalse == norcow_get(EDEK_PVC_KEY, &val, &len)) {
+        random_buffer(cached_dek, DEK_SIZE);
+        set_pin(PIN_EMPTY);
+    }
 }
 
 static secbool pin_fails_reset(uint16_t ofs)
@@ -80,14 +167,32 @@ static void pin_fails_check_max(uint32_t ctr)
 
 static secbool pin_cmp(const uint32_t pin)
 {
-    const void *spin = NULL;
-    uint16_t spinlen = 0;
-    norcow_get(PIN_KEY, &spin, &spinlen);
-    if (NULL != spin && spinlen == sizeof(uint32_t)) {
-        return sectrue * (pin == *(const uint32_t*)spin);
-    } else {
-        return sectrue * (1 == pin);
+    const void *buffer = NULL;
+    uint16_t len = 0;
+    if (sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
+        return secfalse;
     }
+
+    const uint8_t *salt = buffer;
+    const uint8_t *edek = buffer + PIN_SALT_SIZE;
+    const uint8_t *pvc = buffer + PIN_SALT_SIZE + DEK_SIZE;
+    uint8_t kek[SHA256_DIGEST_LENGTH];
+    uint8_t keiv[SHA256_DIGEST_LENGTH];
+    uint8_t mac[POLY1305_MAC_SIZE];
+    chacha20poly1305_ctx ctx;
+
+    derive_kek(pin, salt, kek, keiv);
+    ctx.chacha20.input[12] = 0; // TODO Remove when the rfc7539_init() bug is fixed.
+    rfc7539_init(&ctx, kek, keiv);
+    memzero(kek, sizeof(kek));
+    memzero(keiv, sizeof(keiv));
+    chacha20poly1305_decrypt(&ctx, edek, cached_dek, DEK_SIZE);
+    rfc7539_finish(&ctx, 0, DEK_SIZE, mac);
+    memzero(&ctx, sizeof(ctx));
+    unlocked = memcmp(mac, pvc, PVC_SIZE) == 0 ? sectrue : secfalse;
+    memzero(mac, sizeof(mac));
+
+    return unlocked;
 }
 
 static secbool pin_get_fails(const uint32_t **pinfail, uint32_t *pofs)
@@ -180,27 +285,99 @@ secbool storage_check_pin(const uint32_t pin)
     return pin_fails_reset(ofs * sizeof(uint32_t));
 }
 
+secbool storage_lock() {
+    memzero(cached_dek, DEK_SIZE);
+    unlocked = secfalse;
+    return sectrue;
+}
+
 secbool storage_unlock(const uint32_t pin)
 {
-    unlocked = secfalse;
+    storage_lock();
     if (sectrue == initialized && sectrue == storage_check_pin(pin)) {
         unlocked = sectrue;
     }
     return unlocked;
 }
 
-secbool storage_get(const uint16_t key, const void **val, uint16_t *len)
+secbool storage_get_len(const uint16_t key, uint16_t *len)
+{
+    const void *val;
+    const uint8_t app = key >> 8;
+    // APP == 0 is reserved for PIN related values
+    if (sectrue != initialized || app == 0) {
+        return secfalse;
+    }
+    // If the top bit of APP is set, then the value is not encrypted and can be read from an unlocked device.
+    if ((app & FLAG_PUBLIC) != 0) {
+        return norcow_get(key, &val, len);
+    }
+    if (sectrue != unlocked){
+        return secfalse;
+    }
+    // If the value is encrypted, then return the length of the plaintext.
+    secbool ret = norcow_get(key, &val, len);
+    if (*len < CHACHA_IV_SIZE + POLY1305_MAC_SIZE) {
+        return secfalse;
+    }
+    *len -= CHACHA_IV_SIZE + POLY1305_MAC_SIZE;
+    return ret;
+}
+
+/*
+ * Finds the data stored under key and writes its length to len. If val_dest is not NULL and max_len >= len, then the data is copied to val_dest.
+ */
+secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, uint16_t *len)
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
     if (sectrue != initialized || app == 0) {
         return secfalse;
     }
-    // top bit of APP set indicates the value can be read from unlocked device
-    if (sectrue != unlocked && ((app & 0x80) == 0)) {
+
+    // If the top bit of APP is set, then the value is not encrypted and can be read from an unlocked device.
+    const void *val_stored = NULL;
+    if ((app & FLAG_PUBLIC) != 0) {
+        if (sectrue != norcow_get(key, &val_stored, len)) {
+            return secfalse;
+        }
+        if (val_dest == NULL) {
+            return sectrue;
+        }
+        if (*len > max_len) {
+            return secfalse;
+        }
+        memcpy(val_dest, val_stored, *len);
+        return sectrue;
+    }
+
+    if (sectrue != unlocked) {
         return secfalse;
     }
-    return norcow_get(key, val, len);
+    if (sectrue != norcow_get(key, &val_stored, len) || *len < CHACHA_IV_SIZE + POLY1305_MAC_SIZE) {
+        return secfalse;
+    }
+    *len -= CHACHA_IV_SIZE + POLY1305_MAC_SIZE;
+    if (val_dest == NULL) {
+        return sectrue;
+    }
+    if (*len > max_len) {
+        return secfalse;
+    }
+
+    const uint8_t *iv = val_stored;
+    const uint8_t *ciphertext = val_stored + CHACHA_IV_SIZE;
+    const uint8_t *mac_stored = val_stored + CHACHA_IV_SIZE + *len;
+    uint8_t mac_computed[POLY1305_MAC_SIZE];
+    chacha20poly1305_ctx ctx;
+    rfc7539_init(&ctx, cached_dek, iv);
+    chacha20poly1305_decrypt(&ctx, ciphertext, (uint8_t*) val_dest, *len);
+    rfc7539_finish(&ctx, 0, *len, mac_computed);
+    memzero(&ctx, sizeof(ctx));
+    secbool ret = memcmp(mac_computed, mac_stored, POLY1305_MAC_SIZE) == 0 ? sectrue : secfalse;
+    memzero(mac_computed, sizeof(mac_computed));
+
+    return ret;
 }
 
 secbool storage_set(const uint16_t key, const void *val, uint16_t len)
@@ -210,7 +387,30 @@ secbool storage_set(const uint16_t key, const void *val, uint16_t len)
     if (sectrue != initialized || sectrue != unlocked || app == 0) {
         return secfalse;
     }
-    return norcow_set(key, val, len);
+    if ((app & FLAG_PUBLIC) != 0) {
+        return norcow_set(key, val, len);
+    }
+
+    size_t buffer_size = CHACHA_IV_SIZE + len + POLY1305_MAC_SIZE;
+    uint8_t *buffer = (uint8_t*)malloc(buffer_size);
+    if (buffer == NULL) {
+        return secfalse;
+    }
+    uint8_t *iv = buffer;
+    uint8_t *ciphertext = buffer + CHACHA_IV_SIZE;
+    uint8_t *mac = buffer + CHACHA_IV_SIZE + len;
+
+    chacha20poly1305_ctx ctx;
+    random_buffer(iv, CHACHA_IV_SIZE);
+    rfc7539_init(&ctx, cached_dek, iv);
+    chacha20poly1305_encrypt(&ctx, (uint8_t*) val, ciphertext, len);
+    rfc7539_finish(&ctx, 0, len, mac);
+    memzero(&ctx, sizeof(ctx));
+
+    secbool ret = norcow_set(key, buffer, buffer_size);
+    memzero(buffer, buffer_size);
+    free(buffer);
+    return ret;
 }
 
 secbool storage_has_pin(void)
@@ -218,7 +418,13 @@ secbool storage_has_pin(void)
     if (sectrue != initialized) {
         return secfalse;
     }
-    return sectrue == pin_cmp(1) ? secfalse : sectrue;
+
+    const void *val = NULL;
+    uint16_t len;
+    if (sectrue != norcow_get(PIN_NOT_SET_KEY, &val, &len) || (len > 0 && *(uint8_t*)val != FALSE_BYTE)) {
+        return secfalse;
+    }
+    return sectrue;
 }
 
 secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin)
@@ -229,7 +435,7 @@ secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin)
     if (sectrue != storage_check_pin(oldpin)) {
         return secfalse;
     }
-    return norcow_set(PIN_KEY, &newpin, sizeof(uint32_t));
+    return set_pin(newpin);
 }
 
 void storage_wipe(void)
