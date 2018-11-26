@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from c.storage import Storage as StorageC
-from py.storage import Storage as StoragePy
+from python.storage import Storage as StoragePy
 
 from hashlib import sha256
 
