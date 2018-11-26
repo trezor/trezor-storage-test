@@ -4,6 +4,7 @@ import os
 sectrue = -1431655766  # 0xAAAAAAAAA
 fname = os.path.join(os.path.dirname(__file__), "libtrezor-storage.so")
 
+
 class Storage:
 
     def init(self) -> None:

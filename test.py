@@ -5,8 +5,10 @@ from python.storage import Storage as StoragePy
 
 from hashlib import sha256
 
+
 def hash(data):
     return sha256(data).hexdigest()[:16]
+
 
 sc = StorageC()
 sp = StoragePy()
