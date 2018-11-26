@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 from c.storage import Storage as StorageC
-from py.storage import Storage as StoragePy
+from python.storage import Storage as StoragePy
 
 from hashlib import sha256
 
+
 def hash(data):
     return sha256(data).hexdigest()[:16]
+
 
 sc = StorageC()
 sp = StoragePy()
