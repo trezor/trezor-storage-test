@@ -7,7 +7,7 @@ verify_ssl = true
 cryptography = "*"
 
 # tests
-#pytest = "*"
+pytest = "*"
 #pylint = "*"
 
 # style
