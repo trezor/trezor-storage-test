@@ -26,23 +26,23 @@ class Storage:
 
     def change_pin(self, oldpin: int, newpin: int) -> None:
         if not self.initialized or self.unlocked:
-            return False
+            raise ValueError("Storage not initialized or locked")
         if not self.check_pin(oldpin):
-            return False
+            raise ValueError("Invalid PIN")
         raise NotImplementedError
 
     def get(self, key: int) -> bytes:
         app = key >> 8
         if not self.initialized or app == 0:
-            return False
+            raise ValueError("Storage not initialized or APP_ID = 0")
         if not self.unlocked or (app & 0x80) == 0:
-            return False
+            raise ValueError("Storage locked or (app & 0x80) = 0")
         return self.nc.get(key)
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
         if not self.initialized or not self.unlocked or app == 0:
-            return False
+            raise ValueError("Storage not initialized or locked or app = 0")
         return self.nc.set(key, val)
 
     def _dump(self) -> bytes:
