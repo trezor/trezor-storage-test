@@ -40,3 +40,7 @@ KEK_SIZE = 32
 
 # The length of KEIV in bytes.
 KEIV_SIZE = 12
+
+# True/False bytes
+TRUE_BYTE = b"\x01"
+FALSE_BYTE = b"\x00"

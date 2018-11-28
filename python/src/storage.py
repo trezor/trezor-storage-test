@@ -20,7 +20,7 @@ class Storage:
 
     def init_pin(self):
         self.set_pin(consts.PIN_EMPTY)
-        # todo write flag
+        self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
 
     def set_pin(self, pin: int):
         salt = os.urandom(consts.PIN_SALT_SIZE)
