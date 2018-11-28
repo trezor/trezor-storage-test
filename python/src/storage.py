@@ -16,13 +16,9 @@ class Storage:
         self.unlocked = False
         self.nc.init()
         self.initialized = True
-        self.init_pin()
+        self._init_pin()
 
-    def init_pin(self):
-        self.set_pin(consts.PIN_EMPTY)
-        self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
-
-    def set_pin(self, pin: int):
+    def set_pin(self, pin: int) -> bool:
         salt = os.urandom(consts.PIN_SALT_SIZE)
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -47,7 +43,7 @@ class Storage:
         # Pin Verification Code
         pvc = chacha_output[consts.DEK_SIZE : consts.DEK_SIZE + consts.PVC_SIZE]
 
-        self._set(consts.EDEK_PVC_KEY, salt + edek + pvc)
+        return self._set(consts.EDEK_PVC_KEY, salt + edek + pvc)
 
     def wipe(self) -> None:
         self.nc.wipe()
@@ -84,6 +80,10 @@ class Storage:
         if not self.initialized or not self.unlocked or app == 0:
             raise ValueError("Storage not initialized or locked or app = 0")
         return self._set(key, val)
+
+    def _init_pin(self):
+        self.set_pin(consts.PIN_EMPTY)
+        self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
 
     def _set(self, key: int, val: bytes) -> bool:
         return self.nc.set(key, val)
