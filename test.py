@@ -12,6 +12,7 @@ def hash(data):
 
 sc = StorageC()
 sp = StoragePy()
+a = []
 
 for s in [sc, sp]:
     print(s.__class__)
@@ -20,5 +21,12 @@ for s in [sc, sp]:
     s.set(0xbeef, b"hello")
     s.set(0xcafe, b"world!")
     d = s._dump()
-    print(d[0][:256], d[1][:256])
-    print([hash(x) for x in d])
+    print(d[0][:256].hex(), d[1][:256].hex())
+    h = [hash(x) for x in d]
+    print(h)
+    a.append(h[0])
+    a.append(h[1])
+    print()
+
+print("-------------")
+print("Equals:", a[0] == a[2] and a[1] == a[3])
