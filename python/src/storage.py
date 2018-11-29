@@ -1,11 +1,6 @@
 import os
 
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
-from . import consts
+from . import consts, crypto
 from .norcow import Norcow
 
 
@@ -20,28 +15,15 @@ class Storage:
 
     def set_pin(self, pin: int) -> bool:
         salt = os.urandom(consts.PIN_SALT_SIZE)
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=consts.KEK_SIZE + consts.KEIV_SIZE,
-            salt=salt,
-            iterations=10000,
-            backend=default_backend(),
-        )
-        pbkdf_output = kdf.derive(pin.to_bytes(4, "little"))
-        # the first 256b are Key Encryption Key
-        kek = pbkdf_output[: consts.KEK_SIZE]
-        # following with 96b of Initialization Vector
-        keiv = pbkdf_output[consts.KEK_SIZE :]
+        kek, keiv = crypto.derive_kek_keiv(salt, pin)
 
         # generate random Disk Encryption Key
         dek = os.urandom(consts.DEK_SIZE)
 
-        chacha = ChaCha20Poly1305(kek)
-        chacha_output = chacha.encrypt(keiv, dek, None)
         # Encrypted Disk Encryption Key
-        edek = chacha_output[: consts.DEK_SIZE]
+        edek, tag = crypto.chacha_poly_encrypt(kek, keiv, dek)
         # Pin Verification Code
-        pvc = chacha_output[consts.DEK_SIZE : consts.DEK_SIZE + consts.PVC_SIZE]
+        pvc = tag[: consts.PVC_SIZE]
 
         return self._set(consts.EDEK_PVC_KEY, salt + edek + pvc)
 
@@ -49,7 +31,12 @@ class Storage:
         self.nc.wipe()
 
     def check_pin(self, pin: int) -> bool:
-        return True
+        data = self.nc.get(consts.EDEK_PVC_KEY)
+        salt = data[: consts.PIN_SALT_SIZE]
+        edek = data[consts.PIN_SALT_SIZE : consts.PIN_SALT_SIZE + consts.DEK_SIZE]
+        pvc = data[consts.PIN_SALT_SIZE + consts.DEK_SIZE :]
+
+        return crypto.validate_pin(pin, salt, edek, pvc)
 
     def unlock(self, pin: int) -> bool:
         self.unlocked = False
