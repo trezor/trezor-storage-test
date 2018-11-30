@@ -78,7 +78,7 @@ static uint8_t cached_dek[DEK_SIZE];
 static const uint8_t TRUE_BYTE = 1;
 static const uint8_t FALSE_BYTE = 0;
 
-void derive_kek(uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
+static void derive_kek(const uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
 {
 #if BYTE_ORDER == BIG_ENDIAN
     REVERSE32(pin, pin);
@@ -108,7 +108,6 @@ static secbool set_pin(const uint32_t pin)
     chacha20poly1305_ctx ctx;
     random_buffer(salt, PIN_SALT_SIZE);
     derive_kek(pin, salt, kek, keiv);
-    ctx.chacha20.input[12] = 0; // TODO Remove when the rfc7539_init() bug is fixed.
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
     memzero(keiv, sizeof(keiv));
@@ -135,7 +134,7 @@ static void handle_fault()
     norcow_wipe();
 }
 
-static secbool expand_guard_key(uint32_t guard_key, uint32_t *guard_mask, uint32_t *guard)
+static secbool expand_guard_key(const uint32_t guard_key, uint32_t *guard_mask, uint32_t *guard)
 {
     // TODO Add guard_key integrity check. Call handle_fault() on failure.
     *guard_mask = ((guard_key & LOW_MASK) << 1) | ((~guard_key) & LOW_MASK);
@@ -276,7 +275,8 @@ static secbool pin_get_fails(uint32_t *ctr)
     const uint32_t *success_log = ((const uint32_t*)logs) + 1;
     const uint32_t *entry_log = success_log + PIN_LOG_WORDS;
     int current = -1;
-    for (size_t i = 0; i < PIN_LOG_WORDS; ++i) {
+    size_t i;
+    for (i = 0; i < PIN_LOG_WORDS; ++i) {
         if ((entry_log[i] & guard_mask) != guard || (success_log[i] & guard_mask) != guard || (entry_log[i] & success_log[i]) != entry_log[i]) {
             handle_fault();
             return secfalse;
@@ -294,14 +294,14 @@ static secbool pin_get_fails(uint32_t *ctr)
         }
     }
 
-    if (current < 0 || current >= PIN_LOG_WORDS) {
+    if (current < 0 || current >= PIN_LOG_WORDS || i != PIN_LOG_WORDS) {
         handle_fault();
         return secfalse;
     }
 
-    // Strip the guard bits from the current entry word.
+    // Strip the guard bits from the current entry word and duplicate each data bit.
     uint32_t word = entry_log[current] & ~guard_mask;
-    word = ((word  >> 1) | word ) & LOW_MASK;
+    word = ((word >> 1) | word ) & LOW_MASK;
     word = word | (word << 1);
     // Verify that the entry word has form 0*1*.
     if ((word & (word + 1)) != 0) {
@@ -342,7 +342,6 @@ static secbool pin_cmp(const uint32_t pin)
     chacha20poly1305_ctx ctx;
 
     derive_kek(pin, salt, kek, keiv);
-    ctx.chacha20.input[12] = 0; // TODO Remove when the rfc7539_init() bug is fixed.
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
     memzero(keiv, sizeof(keiv));
