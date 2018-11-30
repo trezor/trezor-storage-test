@@ -81,6 +81,8 @@ static uint8_t cached_dek[DEK_SIZE];
 static const uint8_t TRUE_BYTE = 1;
 static const uint8_t FALSE_BYTE = 0;
 
+static void handle_fault();
+
 static void derive_kek(const uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
 {
 #if BYTE_ORDER == BIG_ENDIAN
@@ -130,11 +132,6 @@ static secbool set_pin(const uint32_t pin)
     }
 
     return ret;
-}
-
-static void handle_fault()
-{
-    norcow_wipe();
 }
 
 static secbool expand_guard_key(const uint32_t guard_key, uint32_t *guard_mask, uint32_t *guard)
@@ -562,4 +559,34 @@ secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin)
 void storage_wipe(void)
 {
     norcow_wipe();
+}
+
+static void handle_fault()
+{
+    static secbool in_progress = secfalse;
+
+    // If fault handling is already in progress, then we are probably facing a fault injection attack, so wipe.
+    if (secfalse != in_progress) {
+        norcow_wipe();
+        for(;;);
+    }
+
+    // We use the PIN fail counter as a fault counter. Increment the counter, check that it was incremented and halt.
+    in_progress = sectrue;
+    uint32_t ctr;
+    if (sectrue != pin_get_fails(&ctr)) {
+        norcow_wipe();
+        for(;;);
+    }
+
+    if (sectrue != pin_fails_increase()) {
+        norcow_wipe();
+        for(;;);
+    }
+
+    uint32_t ctr_new;
+    if (sectrue != pin_get_fails(&ctr_new) || ctr + 1 != ctr_new) {
+        norcow_wipe();
+    }
+    for(;;);
 }
