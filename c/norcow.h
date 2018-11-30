@@ -53,6 +53,12 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len);
  * Update a word in flash in the given key at the given offset.
  * Note that you can only change bits from 1 to 0.
  */
-secbool norcow_update(uint16_t key, uint16_t offset, uint32_t value);
+secbool norcow_update_word(uint16_t key, uint16_t offset, uint32_t value);
+
+/*
+ * Update the value of the given key starting at the given offset.
+ * Note that you can only change bits from 1 to 0.
+ */
+secbool norcow_update_bytes(const uint16_t key, const uint16_t offset, const uint8_t *data, const uint16_t len);
 
 #endif

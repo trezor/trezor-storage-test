@@ -29,10 +29,10 @@ class Storage:
     def get(self, key: int) -> bytes:
         val_len = c.c_uint16()
         if sectrue != self.lib.storage_get(c.c_uint16(key), None, 0, c.byref(val_len)):
-            raise RuntimeError("storage_get_len failed")
+            raise RuntimeError("storage_get failed to get length")
         s = c.create_string_buffer(val_len.value)
         if sectrue != self.lib.storage_get(c.c_uint16(key), s, val_len, c.byref(val_len)):
-            raise RuntimeError("storage_get_data failed")
+            raise RuntimeError("storage_get failed to get data")
         return s.value
 
     def set(self, key: int, val: bytes) -> bool:

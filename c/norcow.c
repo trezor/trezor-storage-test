@@ -366,10 +366,12 @@ secbool norcow_update_bytes(const uint16_t key, const uint16_t offset, const uin
         return secfalse;
     }
     uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_active_sector, 0, NORCOW_SECTOR_SIZE) + offset;
+    uint8_t sector = norcow_sectors[norcow_active_sector];
     ensure(flash_unlock(), NULL);
     for (uint16_t i = 0; i < len; i++, sector_offset++) {
-        ensure(flash_write_byte(norcow_sectors[norcow_active_sector], sector_offset, data[i]), NULL);
+        ensure(flash_write_byte(sector, sector_offset, data[i]), NULL);
     }
+
     ensure(flash_lock(), NULL);
     return sectrue;
 }

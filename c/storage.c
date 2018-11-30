@@ -69,7 +69,10 @@
 #define POLY1305_MAC_SIZE 16
 
 // The length of the ChaCha20 IV (aka nonce) in bytes as per RFC 7539.
-#define CHACHA_IV_SIZE 12
+#define CHACHA20_IV_SIZE 12
+
+// The length of the ChaCha20 block in bytes.
+#define CHACHA20_BLOCK_SIZE 64
 
 static secbool initialized = secfalse;
 static secbool unlocked = secfalse;
@@ -205,7 +208,7 @@ static secbool pin_fails_reset()
             return sectrue;
         }
         if (success_log[i] != guard) {
-            if (sectrue != norcow_update(PIN_LOG_KEY, sizeof(uint32_t)*(i + 1), entry_log[i])) {
+            if (sectrue != norcow_update_word(PIN_LOG_KEY, sizeof(uint32_t)*(i + 1), entry_log[i])) {
                 return secfalse;
             }
         }
@@ -241,7 +244,7 @@ static secbool pin_fails_increase()
             word = ((word >> 1) | word) & LOW_MASK;
             word = (word >> 2) | (word >> 1);
 
-            if (sectrue != norcow_update(PIN_LOG_KEY, sizeof(uint32_t)*(i + 1 + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
+            if (sectrue != norcow_update_word(PIN_LOG_KEY, sizeof(uint32_t)*(i + 1 + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
                 handle_fault();
                 return secfalse;
             }
@@ -460,10 +463,10 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
     if (sectrue != unlocked) {
         return secfalse;
     }
-    if (sectrue != norcow_get(key, &val_stored, len) || *len < CHACHA_IV_SIZE + POLY1305_MAC_SIZE) {
+    if (sectrue != norcow_get(key, &val_stored, len) || *len < CHACHA20_IV_SIZE + POLY1305_MAC_SIZE) {
         return secfalse;
     }
-    *len -= CHACHA_IV_SIZE + POLY1305_MAC_SIZE;
+    *len -= CHACHA20_IV_SIZE + POLY1305_MAC_SIZE;
     if (val_dest == NULL) {
         return sectrue;
     }
@@ -472,8 +475,8 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
     }
 
     const uint8_t *iv = val_stored;
-    const uint8_t *ciphertext = val_stored + CHACHA_IV_SIZE;
-    const uint8_t *mac_stored = val_stored + CHACHA_IV_SIZE + *len;
+    const uint8_t *ciphertext = val_stored + CHACHA20_IV_SIZE;
+    const uint8_t *mac_stored = val_stored + CHACHA20_IV_SIZE + *len;
     uint8_t mac_computed[POLY1305_MAC_SIZE];
     chacha20poly1305_ctx ctx;
     rfc7539_init(&ctx, cached_dek, iv);
@@ -482,11 +485,10 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
     memzero(&ctx, sizeof(ctx));
     secbool ret = memcmp(mac_computed, mac_stored, POLY1305_MAC_SIZE) == 0 ? sectrue : secfalse;
     memzero(mac_computed, sizeof(mac_computed));
-
     return ret;
 }
 
-secbool storage_set(const uint16_t key, const void *val, uint16_t len)
+secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
@@ -497,25 +499,38 @@ secbool storage_set(const uint16_t key, const void *val, uint16_t len)
         return norcow_set(key, val, len);
     }
 
-    size_t buffer_size = CHACHA_IV_SIZE + len + POLY1305_MAC_SIZE;
-    uint8_t *buffer = (uint8_t*)malloc(buffer_size);
-    if (buffer == NULL) {
+    // The data will need to be encrypted, so preallocate space on the flash.
+    uint16_t offset = 0;
+    if (sectrue != norcow_set(key, NULL, CHACHA20_IV_SIZE + len + POLY1305_MAC_SIZE)) {
         return secfalse;
     }
-    uint8_t *iv = buffer;
-    uint8_t *ciphertext = buffer + CHACHA_IV_SIZE;
-    uint8_t *mac = buffer + CHACHA_IV_SIZE + len;
+
+    // Write the IV to the flash.
+    uint8_t buffer[CHACHA20_BLOCK_SIZE + POLY1305_MAC_SIZE];
+    random_buffer(buffer, CHACHA20_IV_SIZE);
+    if (sectrue != norcow_update_bytes(key, offset, buffer, CHACHA20_IV_SIZE)) {
+        return secfalse;
+    }
+    offset += CHACHA20_IV_SIZE;
 
     chacha20poly1305_ctx ctx;
-    random_buffer(iv, CHACHA_IV_SIZE);
-    rfc7539_init(&ctx, cached_dek, iv);
-    chacha20poly1305_encrypt(&ctx, (uint8_t*) val, ciphertext, len);
-    rfc7539_finish(&ctx, 0, len, mac);
-    memzero(&ctx, sizeof(ctx));
+    rfc7539_init(&ctx, cached_dek, buffer);
+    size_t i;
+    for (i = 0; i + CHACHA20_BLOCK_SIZE < len; i += CHACHA20_BLOCK_SIZE, offset += CHACHA20_BLOCK_SIZE) {
+        chacha20poly1305_encrypt(&ctx, ((const uint8_t*) val) + i, buffer, CHACHA20_BLOCK_SIZE);
+        if (sectrue != norcow_update_bytes(key, offset, buffer, CHACHA20_BLOCK_SIZE)) {
+            memzero(&ctx, sizeof(ctx));
+            memzero(buffer, sizeof(buffer));
+            return secfalse;
+        }
+    }
 
-    secbool ret = norcow_set(key, buffer, buffer_size);
-    memzero(buffer, buffer_size);
-    free(buffer);
+    // Encrypt final block and compute message authentication tag.
+    chacha20poly1305_encrypt(&ctx, ((const uint8_t*) val) + i, buffer, len - i);
+    rfc7539_finish(&ctx, 0, len, buffer + len - i);
+    secbool ret = norcow_update_bytes(key, offset, buffer, len - i + POLY1305_MAC_SIZE);
+    memzero(&ctx, sizeof(ctx));
+    memzero(buffer, sizeof(buffer));
     return ret;
 }
 
