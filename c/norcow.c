@@ -63,7 +63,7 @@ static secbool norcow_write(uint8_t sector, uint32_t offset, uint32_t prefix, co
     // write prefix
     ensure(flash_write_word(norcow_sectors[sector], offset, prefix), NULL);
 
-    if (len > 0) {
+    if (data != NULL) {
         offset += NORCOW_PREFIX_LEN;
         // write data
         for (uint16_t i = 0; i < len; i++, offset++) {
@@ -335,7 +335,7 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
  * Update a word in flash at the given pointer.  The pointer must point
  * into the NORCOW area.
  */
-secbool norcow_update(uint16_t key, uint16_t offset, uint32_t value)
+secbool norcow_update_word(uint16_t key, uint16_t offset, uint32_t value)
 {
     const void *ptr;
     uint16_t len;
@@ -348,6 +348,28 @@ secbool norcow_update(uint16_t key, uint16_t offset, uint32_t value)
     uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_active_sector, 0, NORCOW_SECTOR_SIZE) + offset;
     ensure(flash_unlock(), NULL);
     ensure(flash_write_word(norcow_sectors[norcow_active_sector], sector_offset, value), NULL);
+    ensure(flash_lock(), NULL);
+    return sectrue;
+}
+
+/*
+ * Update the value of the given key starting at the given offset.
+ */
+secbool norcow_update_bytes(const uint16_t key, const uint16_t offset, const uint8_t *data, const uint16_t len)
+{
+    const void *ptr;
+    uint16_t allocated_len;
+    if (sectrue != find_item(norcow_active_sector, key, &ptr, &allocated_len)) {
+        return secfalse;
+    }
+    if (offset + len > allocated_len) {
+        return secfalse;
+    }
+    uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_active_sector, 0, NORCOW_SECTOR_SIZE) + offset;
+    ensure(flash_unlock(), NULL);
+    for (uint16_t i = 0; i < len; i++, sector_offset++) {
+        ensure(flash_write_byte(norcow_sectors[norcow_active_sector], sector_offset, data[i]), NULL);
+    }
     ensure(flash_lock(), NULL);
     return sectrue;
 }
