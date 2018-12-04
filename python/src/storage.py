@@ -1,6 +1,6 @@
 import os
 
-from . import consts, crypto
+from . import consts, crypto, pin
 from .norcow import Norcow
 
 
@@ -71,6 +71,7 @@ class Storage:
     def _init_pin(self):
         self.set_pin(consts.PIN_EMPTY)
         self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
+        self._set(consts.PIN_LOG_KEY, pin.get_init_logs())
 
     def _set(self, key: int, val: bytes) -> bool:
         return self.nc.set(key, val)

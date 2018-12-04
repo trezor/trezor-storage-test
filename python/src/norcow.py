@@ -7,7 +7,7 @@ NORCOW_MAGIC = b"NRCW"
 
 
 def align4_int(i: int):
-    return 4 - i % 4
+    return (4 - i) % 4
 
 
 def align4_data(data):

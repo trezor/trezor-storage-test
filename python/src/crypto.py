@@ -1,8 +1,8 @@
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 
 from . import consts
 
@@ -41,10 +41,10 @@ def validate_pin(pin: int, salt: bytes, edek: bytes, pvc: bytes):
     """
     kek, keiv = derive_kek_keiv(salt, pin)
 
-    algorithm = algorithms.ChaCha20(kek, (1).to_bytes(4, 'little') + keiv)
+    algorithm = algorithms.ChaCha20(kek, (1).to_bytes(4, "little") + keiv)
     cipher = Cipher(algorithm, mode=None, backend=default_backend())
     decryptor = cipher.decryptor()
     dek = decryptor.update(bytes(edek))
 
     _, tag = chacha_poly_encrypt(kek, keiv, dek)
-    return tag[:consts.PVC_SIZE] == pvc
+    return tag[: consts.PVC_SIZE] == pvc

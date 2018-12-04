@@ -1,6 +1,12 @@
-# Byte-length of flash section containing fail counters.
-PIN_FAIL_KEY = 0x0001
-PIN_FAIL_SECTOR_SIZE = 32
+# Norcow storage key of the PIN entry log and PIN success log.
+PIN_LOG_KEY = 0x0001
+
+# Length of items in the PIN entry log
+PIN_LOG_GUARD_KEY_SIZE = 4
+# Length of both success log and entry log
+PIN_LOG_SUCCESS_AND_ENTRY_SIZE = 64
+
+LOW_MASK = 0x55555555
 
 # Norcow storage key of the combined salt, EDEK and PIN verification code entry.
 EDEK_PVC_KEY = 0x0002
