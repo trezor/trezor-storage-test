@@ -30,7 +30,7 @@
 #define LOW_MASK 0x55555555
 
 // Norcow storage key of the PIN entry log and PIN success log.
-#define PIN_LOG_KEY 0x0001
+#define PIN_LOGS_KEY 0x0001
 
 // Norcow storage key of the combined salt, EDEK and PIN verification code entry.
 #define EDEK_PVC_KEY 0x0002
@@ -144,6 +144,8 @@ static secbool expand_guard_key(const uint32_t guard_key, uint32_t *guard_mask, 
 
 static secbool pin_logs_init()
 {
+    // The format of the PIN_LOGS_KEY entry is:
+    // guard_key (1 word), pin_success_log (PIN_LOG_WORDS), pin_entry_log (PIN_LOG_WORDS)
     uint32_t logs[1 + 2*PIN_LOG_WORDS];
 
     // TODO Generate guard key so that it satisfies the integrity check.
@@ -160,7 +162,7 @@ static secbool pin_logs_init()
         logs[i] = unused;
     }
 
-    return norcow_set(PIN_LOG_KEY, logs, sizeof(logs));
+    return norcow_set(PIN_LOGS_KEY, logs, sizeof(logs));
 }
 
 void storage_init(PIN_UI_WAIT_CALLBACK callback)
@@ -187,7 +189,7 @@ static secbool pin_fails_reset()
     const void *logs = NULL;
     uint16_t len = 0;
 
-    if (sectrue != norcow_get(PIN_LOG_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
+    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
         return secfalse;
     }
 
@@ -205,7 +207,7 @@ static secbool pin_fails_reset()
             return sectrue;
         }
         if (success_log[i] != guard) {
-            if (sectrue != norcow_update_word(PIN_LOG_KEY, sizeof(uint32_t)*(i + 1), entry_log[i])) {
+            if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + 1), entry_log[i])) {
                 return secfalse;
             }
         }
@@ -218,7 +220,7 @@ static secbool pin_fails_increase()
     const void *logs = NULL;
     uint16_t len = 0;
 
-    if (sectrue != norcow_get(PIN_LOG_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
+    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
         handle_fault();
         return secfalse;
     }
@@ -241,7 +243,7 @@ static secbool pin_fails_increase()
             word = ((word >> 1) | word) & LOW_MASK;
             word = (word >> 2) | (word >> 1);
 
-            if (sectrue != norcow_update_word(PIN_LOG_KEY, sizeof(uint32_t)*(i + 1 + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
+            if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + 1 + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
                 handle_fault();
                 return secfalse;
             }
@@ -259,7 +261,7 @@ static secbool pin_get_fails(uint32_t *ctr)
 
     const void *logs = NULL;
     uint16_t len = 0;
-    if (sectrue != norcow_get(PIN_LOG_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
+    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
         handle_fault();
         return secfalse;
     }
@@ -496,7 +498,7 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
         return norcow_set(key, val, len);
     }
 
-    // The data will need to be encrypted, so preallocate space on the flash.
+    // The data will need to be encrypted, so preallocate space on the flash storage.
     uint16_t offset = 0;
     if (sectrue != norcow_set(key, NULL, CHACHA20_IV_SIZE + len + POLY1305_MAC_SIZE)) {
         return secfalse;
@@ -510,6 +512,7 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
     }
     offset += CHACHA20_IV_SIZE;
 
+    // Encrypt all blocks except for the last one.
     chacha20poly1305_ctx ctx;
     rfc7539_init(&ctx, cached_dek, buffer);
     size_t i;
