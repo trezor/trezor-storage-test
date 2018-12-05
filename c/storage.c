@@ -183,7 +183,7 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback)
         set_pin(PIN_EMPTY);
         pin_logs_init();
     }
-    storage_lock();
+    memzero(cached_dek, DEK_SIZE);
 }
 
 static secbool pin_fails_reset()
@@ -329,11 +329,11 @@ static secbool pin_get_fails(uint32_t *ctr)
     return sectrue;
 }
 
-static secbool pin_cmp(uint32_t pin)
+static secbool unlock(uint32_t pin)
 {
     const void *buffer = NULL;
     uint16_t len = 0;
-    if (sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
+    if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
         memzero(&pin, sizeof(pin));
         return secfalse;
     }
@@ -343,24 +343,30 @@ static secbool pin_cmp(uint32_t pin)
     const uint8_t *pvc = buffer + PIN_SALT_SIZE + DEK_SIZE;
     uint8_t kek[SHA256_DIGEST_LENGTH];
     uint8_t keiv[SHA256_DIGEST_LENGTH];
+    uint8_t dek[DEK_SIZE];
     uint8_t mac[POLY1305_MAC_SIZE];
     chacha20poly1305_ctx ctx;
+    secbool ret = secfalse;
 
     derive_kek(pin, salt, kek, keiv);
     memzero(&pin, sizeof(pin));
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
     memzero(keiv, sizeof(keiv));
-    chacha20poly1305_decrypt(&ctx, edek, cached_dek, DEK_SIZE);
+    chacha20poly1305_decrypt(&ctx, edek, dek, DEK_SIZE);
     rfc7539_finish(&ctx, 0, DEK_SIZE, mac);
     memzero(&ctx, sizeof(ctx));
-    unlocked = memcmp(mac, pvc, PVC_SIZE) == 0 ? sectrue : secfalse;
+    if (memcmp(mac, pvc, PVC_SIZE) == 0) {
+        memcpy(cached_dek, dek, sizeof(dek));
+        ret = sectrue;
+    }
+    memzero(dek, sizeof(dek));
     memzero(mac, sizeof(mac));
 
-    return unlocked;
+    return ret;
 }
 
-secbool storage_check_pin(uint32_t pin)
+secbool storage_unlock(uint32_t pin)
 {
     // Get the pin failure counter
     uint32_t ctr;
@@ -411,7 +417,7 @@ secbool storage_check_pin(uint32_t pin)
         return secfalse;
     }
 
-    if (sectrue != pin_cmp(pin)) {
+    if (sectrue != unlock(pin)) {
         // Wipe storage if too many failures
         if (ctr >= PIN_MAX_TRIES) {
             norcow_wipe();
@@ -420,24 +426,10 @@ secbool storage_check_pin(uint32_t pin)
         return secfalse;
     }
     memzero(&pin, sizeof(pin));
+    unlocked = sectrue;
+
     // Finally set the counter to 0 to indicate success.
     return pin_fails_reset();
-}
-
-secbool storage_lock() {
-    memzero(cached_dek, DEK_SIZE);
-    unlocked = secfalse;
-    return sectrue;
-}
-
-secbool storage_unlock(uint32_t pin)
-{
-    storage_lock();
-    if (sectrue == initialized && sectrue == storage_check_pin(pin)) {
-        unlocked = sectrue;
-    }
-    memzero(&pin, sizeof(pin));
-    return unlocked;
 }
 
 /*
@@ -561,7 +553,7 @@ secbool storage_change_pin(uint32_t oldpin, uint32_t newpin)
     if (sectrue != initialized || sectrue != unlocked) {
         return secfalse;
     }
-    if (sectrue != storage_check_pin(oldpin)) {
+    if (sectrue != storage_unlock(oldpin)) {
         return secfalse;
     }
     secbool ret = set_pin(newpin);

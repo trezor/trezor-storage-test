@@ -14,9 +14,6 @@ class Storage:
     def wipe(self) -> None:
         self.lib.storage_wipe()
 
-    def check_pin(self, pin: int) -> bool:
-        return sectrue == self.lib.storage_check_pin(c.c_uint32(pin))
-
     def unlock(self, pin: int) -> bool:
         return sectrue == self.lib.storage_unlock(c.c_uint32(pin))
 

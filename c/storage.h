@@ -28,8 +28,6 @@ typedef void (*PIN_UI_WAIT_CALLBACK)(uint32_t wait, uint32_t progress);
 
 void storage_init(PIN_UI_WAIT_CALLBACK callback);
 void storage_wipe(void);
-secbool storage_check_pin(const uint32_t pin);
-secbool storage_lock();
 secbool storage_unlock(const uint32_t pin);
 secbool storage_has_pin(void);
 secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin);
