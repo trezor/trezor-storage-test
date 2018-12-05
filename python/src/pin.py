@@ -1,5 +1,3 @@
-import os
-
 from . import consts
 
 
@@ -19,9 +17,7 @@ def derive_guard_mask_and_value(guard_key: bytes) -> (int, int):
     return guard_mask, guard
 
 
-def get_init_logs() -> bytes:
-    # generate random guard key
-    guard_key = os.urandom(consts.PIN_LOG_GUARD_KEY_SIZE)
+def get_init_logs(guard_key: bytes) -> bytes:
     guard_mask, guard = derive_guard_mask_and_value(guard_key)
 
     pin_success_log = 0
