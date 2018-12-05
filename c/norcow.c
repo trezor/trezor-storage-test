@@ -30,8 +30,12 @@
 #define NORCOW_WORD_SIZE  (sizeof(uint32_t))
 #define NORCOW_PREFIX_LEN NORCOW_WORD_SIZE
 
-// The length of the sector header in bytes.
+// The length of the sector header in bytes. The header is preserved between sector erasures.
+#if TREZOR_MODEL == 1
+#define NORCOW_HEADER_LEN (0x100)
+#else
 #define NORCOW_HEADER_LEN 0
+#endif
 
 static const uint8_t norcow_sectors[NORCOW_SECTOR_COUNT] = NORCOW_SECTORS;
 static uint8_t norcow_active_sector = 0;
