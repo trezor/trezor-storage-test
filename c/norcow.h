@@ -45,7 +45,9 @@ void norcow_wipe(void);
 secbool norcow_get(uint16_t key, const void **val, uint16_t *len);
 
 /*
- * Sets the given key, returns status of the operation
+ * Sets the given key, returns status of the operation. If NULL is passed
+ * as val, then norcow_set allocates a new key of size len. The value should
+ * then be written using norcow_update_bytes().
  */
 secbool norcow_set(uint16_t key, const void *val, uint16_t len);
 

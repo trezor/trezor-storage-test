@@ -30,10 +30,12 @@
 #define NORCOW_WORD_SIZE  (sizeof(uint32_t))
 #define NORCOW_PREFIX_LEN NORCOW_WORD_SIZE
 
+// The length of the sector header in bytes.
+#define NORCOW_HEADER_LEN 0
 
 static const uint8_t norcow_sectors[NORCOW_SECTOR_COUNT] = NORCOW_SECTORS;
 static uint8_t norcow_active_sector = 0;
-static uint32_t norcow_active_offset = NORCOW_MAGIC_LEN;
+static uint32_t norcow_active_offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
 
 /*
  * Returns pointer to sector, starting with offset
@@ -83,10 +85,24 @@ static secbool norcow_write(uint8_t sector, uint32_t offset, uint32_t prefix, co
  */
 static void norcow_erase(uint8_t sector, secbool set_magic)
 {
-    ensure(sectrue * (sector <= NORCOW_SECTOR_COUNT), "invalid sector");
+#if NORCOW_HEADER_LEN > 0
+    // Backup the sector header.
+    uint32_t header_backup[NORCOW_HEADER_LEN/sizeof(uint32_t)];
+    const void *sector_start = norcow_ptr(sector, 0, NORCOW_HEADER_LEN);
+    memcpy(header_backup, sector_start, sizeof(header_backup));
+#endif
+
     ensure(flash_erase_sector(norcow_sectors[sector]), "erase failed");
+
+#if NORCOW_HEADER_LEN > 0
+    // Copy the sector header back.
+    for (uint32_t i = 0; i < NORCOW_HEADER_LEN/sizeof(uint32_t); ++i) {
+        ensure(flash_write_word(norcow_sectors[sector], i*sizeof(uint32_t), header_backup[i]), NULL);
+    }
+#endif
+
     if (sectrue == set_magic) {
-        ensure(norcow_write(sector, 0, NORCOW_MAGIC, NULL, 0), "set magic failed");
+        ensure(norcow_write(sector, NORCOW_HEADER_LEN, NORCOW_MAGIC, NULL, 0), "set magic failed");
     }
 }
 
@@ -137,7 +153,7 @@ static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_
 {
     *val = 0;
     *len = 0;
-    uint32_t offset = NORCOW_MAGIC_LEN;
+    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
     for (;;) {
         uint16_t k, l;
         const void *v;
@@ -163,7 +179,7 @@ static secbool erase_item(uint8_t sector, uint16_t key, uint32_t max_offset)
         return secfalse;
     }
 
-    uint32_t offset = NORCOW_MAGIC_LEN;
+    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
     uint16_t k;
     uint16_t len;
     const void *val;
@@ -197,7 +213,7 @@ static secbool erase_item(uint8_t sector, uint16_t key, uint32_t max_offset)
  */
 static uint32_t find_free_offset(uint8_t sector)
 {
-    uint32_t offset = NORCOW_MAGIC_LEN;
+    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
     for (;;) {
         uint16_t key, len;
         const void *val;
@@ -218,7 +234,8 @@ static void compact()
     uint8_t norcow_next_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
     norcow_erase(norcow_next_sector, sectrue);
 
-    uint32_t offset = NORCOW_MAGIC_LEN, offsetw = NORCOW_MAGIC_LEN;
+    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+    uint32_t offsetw = offset;
 
     for (;;) {
         // read item
@@ -275,7 +292,7 @@ void norcow_init(void)
     secbool found = secfalse;
     // detect active sector - starts with magic
     for (uint8_t i = 0; i < NORCOW_SECTOR_COUNT; i++) {
-        const uint32_t *magic = norcow_ptr(i, 0, NORCOW_MAGIC_LEN);
+        const uint32_t *magic = norcow_ptr(i, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN);
         if (magic != NULL && *magic == NORCOW_MAGIC) {
             found = sectrue;
             norcow_active_sector = i;
@@ -300,7 +317,7 @@ void norcow_wipe(void)
         norcow_erase(i, secfalse);
     }
     norcow_active_sector = 0;
-    norcow_active_offset = NORCOW_MAGIC_LEN;
+    norcow_active_offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
 }
 
 /*
@@ -312,7 +329,9 @@ secbool norcow_get(uint16_t key, const void **val, uint16_t *len)
 }
 
 /*
- * Sets the given key, returns status of the operation
+ * Sets the given key, returns status of the operation. If NULL is passed
+ * as val, then norcow_set allocates a new key of size len. The value should
+ * then be written using norcow_update_bytes().
  */
 secbool norcow_set(uint16_t key, const void *val, uint16_t len)
 {
@@ -371,7 +390,6 @@ secbool norcow_update_bytes(const uint16_t key, const uint16_t offset, const uin
     for (uint16_t i = 0; i < len; i++, sector_offset++) {
         ensure(flash_write_byte(sector, sector_offset, data[i]), NULL);
     }
-
     ensure(flash_lock(), NULL);
     return sectrue;
 }
