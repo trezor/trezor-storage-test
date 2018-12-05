@@ -1,6 +1,7 @@
 import sys
 from unittest import mock
 
+from src.prng import Prng
 from src.storage import Storage
 
 from . import common
@@ -10,7 +11,7 @@ sys.path.append("../src")
 
 class TestSetPin:
     def test_set_pin_success(self):
-        with mock.patch("os.urandom", common.mock_urandom_simple):
+        with mock.patch.object(Prng, "random_buffer", common.mock_random_simple):
             s = Storage()
             s.init()
             s.set_pin(1)
@@ -22,7 +23,7 @@ class TestSetPin:
             assert s.unlock(229922)
 
     def test_set_pin_failure(self):
-        with mock.patch("os.urandom", common.mock_urandom_simple):
+        with mock.patch.object(Prng, "random_buffer", common.mock_random_simple):
             s = Storage()
             s.init()
             s.set_pin(1)

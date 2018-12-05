@@ -1,7 +1,6 @@
-import os
-
 from . import consts, crypto, pin
 from .norcow import Norcow
+from .prng import Prng
 
 
 class Storage:
@@ -11,14 +10,15 @@ class Storage:
         self.unlocked = False
         self.nc.init()
         self.initialized = True
+        self.prng = Prng()
         self._init_pin()
 
     def set_pin(self, pin: int) -> bool:
-        salt = os.urandom(consts.PIN_SALT_SIZE)
+        salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
 
         # generate random Disk Encryption Key
-        dek = os.urandom(consts.DEK_SIZE)
+        dek = self.prng.random_buffer(consts.DEK_SIZE)
 
         # Encrypted Disk Encryption Key
         edek, tag = crypto.chacha_poly_encrypt(kek, keiv, dek)
@@ -71,7 +71,8 @@ class Storage:
     def _init_pin(self):
         self.set_pin(consts.PIN_EMPTY)
         self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
-        self._set(consts.PIN_LOG_KEY, pin.get_init_logs())
+        guard_key = self.prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
+        self._set(consts.PIN_LOG_KEY, pin.get_init_logs(guard_key))
 
     def _set(self, key: int, val: bytes) -> bool:
         return self.nc.set(key, val)
