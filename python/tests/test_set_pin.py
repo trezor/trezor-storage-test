@@ -3,16 +3,14 @@ from unittest import mock
 
 from src.storage import Storage
 
+from . import common
+
 sys.path.append("../src")
-
-
-def mock_urandom(length: int) -> bytes:
-    return b"\x01" * length
 
 
 class TestSetPin:
     def test_set_pin_success(self):
-        with mock.patch("os.urandom", mock_urandom):
+        with mock.patch("os.urandom", common.mock_urandom_simple):
             s = Storage()
             s.init()
             s.set_pin(1)
@@ -24,7 +22,7 @@ class TestSetPin:
             assert s.unlock(229922)
 
     def test_set_pin_failure(self):
-        with mock.patch("os.urandom", mock_urandom):
+        with mock.patch("os.urandom", common.mock_urandom_simple):
             s = Storage()
             s.init()
             s.set_pin(1)
