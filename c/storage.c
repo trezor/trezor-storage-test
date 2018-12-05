@@ -83,7 +83,7 @@ static const uint8_t FALSE_BYTE = 0;
 
 static void handle_fault();
 
-static void derive_kek(const uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
+static void derive_kek(uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
 {
 #if BYTE_ORDER == BIG_ENDIAN
     REVERSE32(pin, pin);
@@ -99,9 +99,10 @@ static void derive_kek(const uint32_t pin, const uint8_t *salt, uint8_t kek[SHA2
     pbkdf2_hmac_sha256_Update(&ctx, PIN_ITER_COUNT/2);
     pbkdf2_hmac_sha256_Final(&ctx, keiv);
     memzero(&ctx, sizeof(PBKDF2_HMAC_SHA256_CTX));
+    memzero(&pin, sizeof(pin));
 }
 
-static secbool set_pin(const uint32_t pin)
+static secbool set_pin(uint32_t pin)
 {
     uint8_t buffer[PIN_SALT_SIZE + DEK_SIZE + POLY1305_MAC_SIZE];
     uint8_t *salt = buffer;
@@ -131,6 +132,7 @@ static secbool set_pin(const uint32_t pin)
         }
     }
 
+    memzero(&pin, sizeof(pin));
     return ret;
 }
 
@@ -327,11 +329,12 @@ static secbool pin_get_fails(uint32_t *ctr)
     return sectrue;
 }
 
-static secbool pin_cmp(const uint32_t pin)
+static secbool pin_cmp(uint32_t pin)
 {
     const void *buffer = NULL;
     uint16_t len = 0;
     if (sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
+        memzero(&pin, sizeof(pin));
         return secfalse;
     }
 
@@ -344,6 +347,7 @@ static secbool pin_cmp(const uint32_t pin)
     chacha20poly1305_ctx ctx;
 
     derive_kek(pin, salt, kek, keiv);
+    memzero(&pin, sizeof(pin));
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
     memzero(keiv, sizeof(keiv));
@@ -356,11 +360,12 @@ static secbool pin_cmp(const uint32_t pin)
     return unlocked;
 }
 
-secbool storage_check_pin(const uint32_t pin)
+secbool storage_check_pin(uint32_t pin)
 {
     // Get the pin failure counter
     uint32_t ctr;
     if (sectrue != pin_get_fails(&ctr)) {
+        memzero(&pin, sizeof(pin));
         return secfalse;
     }
 
@@ -395,6 +400,7 @@ secbool storage_check_pin(const uint32_t pin)
     // PIN.  If the PIN is correct, we reset the counter afterwards.  If not, we
     // check if this is the last allowed attempt.
     if (sectrue != pin_fails_increase()) {
+        memzero(&pin, sizeof(pin));
         return secfalse;
     }
 
@@ -413,6 +419,7 @@ secbool storage_check_pin(const uint32_t pin)
         }
         return secfalse;
     }
+    memzero(&pin, sizeof(pin));
     // Finally set the counter to 0 to indicate success.
     return pin_fails_reset();
 }
@@ -423,12 +430,13 @@ secbool storage_lock() {
     return sectrue;
 }
 
-secbool storage_unlock(const uint32_t pin)
+secbool storage_unlock(uint32_t pin)
 {
     storage_lock();
     if (sectrue == initialized && sectrue == storage_check_pin(pin)) {
         unlocked = sectrue;
     }
+    memzero(&pin, sizeof(pin));
     return unlocked;
 }
 
@@ -548,7 +556,7 @@ secbool storage_has_pin(void)
     return sectrue;
 }
 
-secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin)
+secbool storage_change_pin(uint32_t oldpin, uint32_t newpin)
 {
     if (sectrue != initialized || sectrue != unlocked) {
         return secfalse;
@@ -556,7 +564,10 @@ secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin)
     if (sectrue != storage_check_pin(oldpin)) {
         return secfalse;
     }
-    return set_pin(newpin);
+    secbool ret = set_pin(newpin);
+    memzero(&oldpin, sizeof(oldpin));
+    memzero(&newpin, sizeof(newpin));
+    return ret;
 }
 
 void storage_wipe(void)
