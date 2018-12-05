@@ -1,6 +1,6 @@
 class Prng:
     def __init__(self, seed=0):
-        self.generator = self.lcg(seed)
+        self.seed = seed
 
     def random_buffer(self, length: int):
         length = length
@@ -9,13 +9,18 @@ class Prng:
         b = bytearray(length)
         for i in range(length):
             if i % 4 == 0:
-                # TODO check endianness
-                rand = next(self.generator).to_bytes(4, "little")
+                rand = self.random32().to_bytes(4, "little")
             b[i] = rand[i % 4]
         return b
 
-    def lcg(self, seed):
-        while True:
-            # & 0x7fffffff is equal to % (2**31)
-            seed = (1103515245 * seed + 12345) & 0x7FFFFFFF
-            yield seed
+    def random8(self):
+        # & 0x7fffffff is equal to % (2**31)
+        self.seed = (1103515245 * self.seed + 12345) & 0x7FFFFFFF
+        return self.seed & 0xFF
+
+    def random32(self):
+        r1 = self.random8()
+        r2 = self.random8()
+        r3 = self.random8()
+        r4 = self.random8()
+        return (r1 << 24) | (r2 << 16) | (r3 << 8) | r4

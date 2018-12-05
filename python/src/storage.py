@@ -14,13 +14,13 @@ class Storage:
         self._init_pin()
 
     def set_pin(self, pin: int) -> bool:
+        # generate random Data Encryption Key
+        dek = self.prng.random_buffer(consts.DEK_SIZE)
+
         salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
 
-        # generate random Disk Encryption Key
-        dek = self.prng.random_buffer(consts.DEK_SIZE)
-
-        # Encrypted Disk Encryption Key
+        # Encrypted Data Encryption Key
         edek, tag = crypto.chacha_poly_encrypt(kek, keiv, dek)
         # Pin Verification Code
         pvc = tag[: consts.PVC_SIZE]
