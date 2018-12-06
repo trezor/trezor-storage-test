@@ -23,6 +23,7 @@
 #include "norcow.h"
 #include "storage.h"
 #include "pbkdf2.h"
+#include "hmac.h"
 #include "rand.h"
 #include "memzero.h"
 #include "chacha20poly1305/rfc7539.h"
@@ -56,11 +57,14 @@
 // The length of a word in bytes.
 #define WORD_SIZE sizeof(uint32_t)
 
-// The length of the data encryption key in bytes.
-#define DEK_SIZE 32
+// The length of the hashed hardware salt in bytes.
+#define HARDWARE_SALT_SIZE SHA256_DIGEST_LENGTH
 
 // The length of the random salt in bytes.
-#define PIN_SALT_SIZE 4
+#define RANDOM_SALT_SIZE 4
+
+// The length of the data encryption key in bytes.
+#define DEK_SIZE 32
 
 // The length of the PIN verification code in bytes.
 #define PVC_SIZE 8
@@ -77,42 +81,46 @@
 static secbool initialized = secfalse;
 static secbool unlocked = secfalse;
 static PIN_UI_WAIT_CALLBACK ui_callback = NULL;
-static uint8_t cached_dek[DEK_SIZE];
+static uint8_t cached_dek[DEK_SIZE] = {0};
+static uint8_t hardware_salt[HARDWARE_SALT_SIZE] = {0};
 static const uint8_t TRUE_BYTE = 1;
 static const uint8_t FALSE_BYTE = 0;
 
 static void handle_fault();
 
-static void derive_kek(uint32_t pin, const uint8_t *salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
+static void derive_kek(uint32_t pin, const uint8_t *random_salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
 {
 #if BYTE_ORDER == BIG_ENDIAN
     REVERSE32(pin, pin);
 #endif
 
-    // TODO Add more salt
+    uint8_t salt[HARDWARE_SALT_SIZE + RANDOM_SALT_SIZE];
+    memcpy(salt, hardware_salt, HARDWARE_SALT_SIZE);
+    memcpy(salt + HARDWARE_SALT_SIZE, random_salt, RANDOM_SALT_SIZE);
 
     PBKDF2_HMAC_SHA256_CTX ctx;
-    pbkdf2_hmac_sha256_Init(&ctx, (const uint8_t*) &pin, sizeof(pin), salt, PIN_SALT_SIZE, 1);
+    pbkdf2_hmac_sha256_Init(&ctx, (const uint8_t*) &pin, sizeof(pin), salt, sizeof(salt), 1);
     pbkdf2_hmac_sha256_Update(&ctx, PIN_ITER_COUNT/2);
     pbkdf2_hmac_sha256_Final(&ctx, kek);
-    pbkdf2_hmac_sha256_Init(&ctx, (const uint8_t*) &pin, sizeof(pin), salt, PIN_SALT_SIZE, 2);
+    pbkdf2_hmac_sha256_Init(&ctx, (const uint8_t*) &pin, sizeof(pin), salt, sizeof(salt), 2);
     pbkdf2_hmac_sha256_Update(&ctx, PIN_ITER_COUNT/2);
     pbkdf2_hmac_sha256_Final(&ctx, keiv);
     memzero(&ctx, sizeof(PBKDF2_HMAC_SHA256_CTX));
     memzero(&pin, sizeof(pin));
+    memzero(&salt, sizeof(salt));
 }
 
 static secbool set_pin(uint32_t pin)
 {
-    uint8_t buffer[PIN_SALT_SIZE + DEK_SIZE + POLY1305_MAC_SIZE];
+    uint8_t buffer[RANDOM_SALT_SIZE + DEK_SIZE + POLY1305_MAC_SIZE];
     uint8_t *salt = buffer;
-    uint8_t *edek = buffer + PIN_SALT_SIZE;
-    uint8_t *pvc = buffer + PIN_SALT_SIZE + DEK_SIZE;
+    uint8_t *edek = buffer + RANDOM_SALT_SIZE;
+    uint8_t *pvc = buffer + RANDOM_SALT_SIZE + DEK_SIZE;
 
     uint8_t kek[SHA256_DIGEST_LENGTH];
     uint8_t keiv[SHA256_DIGEST_LENGTH];
     chacha20poly1305_ctx ctx;
-    random_buffer(salt, PIN_SALT_SIZE);
+    random_buffer(salt, RANDOM_SALT_SIZE);
     derive_kek(pin, salt, kek, keiv);
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
@@ -120,7 +128,7 @@ static secbool set_pin(uint32_t pin)
     chacha20poly1305_encrypt(&ctx, cached_dek, edek, DEK_SIZE);
     rfc7539_finish(&ctx, 0, DEK_SIZE, pvc);
     memzero(&ctx, sizeof(ctx));
-    secbool ret = norcow_set(EDEK_PVC_KEY, buffer, PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE);
+    secbool ret = norcow_set(EDEK_PVC_KEY, buffer, RANDOM_SALT_SIZE + DEK_SIZE + PVC_SIZE);
     memzero(buffer, sizeof(buffer));
 
     if (ret == sectrue)
@@ -165,6 +173,21 @@ static secbool pin_logs_init()
     }
 
     return norcow_set(PIN_LOGS_KEY, logs, sizeof(logs));
+}
+
+secbool storage_init_salt(const uint8_t *salt, const uint16_t len)
+{
+    // Salt must be added prior to storage initialization.
+    if (sectrue == initialized) {
+        return secfalse;
+    }
+
+    HMAC_SHA256_CTX hctx;
+    hmac_sha256_Init(&hctx, hardware_salt, sizeof(hardware_salt));
+    hmac_sha256_Update(&hctx, salt, len);
+    hmac_sha256_Final(&hctx, hardware_salt);
+    memzero(&hctx, sizeof(hctx));
+    return sectrue;
 }
 
 void storage_init(PIN_UI_WAIT_CALLBACK callback)
@@ -333,14 +356,14 @@ static secbool unlock(uint32_t pin)
 {
     const void *buffer = NULL;
     uint16_t len = 0;
-    if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != PIN_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
+    if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != RANDOM_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
         memzero(&pin, sizeof(pin));
         return secfalse;
     }
 
     const uint8_t *salt = buffer;
-    const uint8_t *edek = buffer + PIN_SALT_SIZE;
-    const uint8_t *pvc = buffer + PIN_SALT_SIZE + DEK_SIZE;
+    const uint8_t *edek = buffer + RANDOM_SALT_SIZE;
+    const uint8_t *pvc = buffer + RANDOM_SALT_SIZE + DEK_SIZE;
     uint8_t kek[SHA256_DIGEST_LENGTH];
     uint8_t keiv[SHA256_DIGEST_LENGTH];
     uint8_t dek[DEK_SIZE];

@@ -26,6 +26,11 @@
 
 typedef void (*PIN_UI_WAIT_CALLBACK)(uint32_t wait, uint32_t progress);
 
+/*
+ * Initializes the hardware salt. This function may be called repeatedly, but only prior to storage_init().
+ */
+secbool storage_init_salt(const uint8_t *salt, const uint16_t len);
+
 void storage_init(PIN_UI_WAIT_CALLBACK callback);
 void storage_wipe(void);
 secbool storage_unlock(const uint32_t pin);
