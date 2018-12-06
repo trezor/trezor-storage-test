@@ -43,7 +43,7 @@
 #define PIN_EMPTY 1
 
 // Maximum number of failed unlock attempts.
-#define PIN_MAX_TRIES 15
+#define PIN_MAX_TRIES 16
 
 // The total number of iterations to use in PBKDF2.
 #define PIN_ITER_COUNT 20000
@@ -399,7 +399,7 @@ secbool storage_unlock(uint32_t pin)
     }
 
     // Wipe storage if too many failures
-    if (ctr > PIN_MAX_TRIES) {
+    if (ctr >= PIN_MAX_TRIES) {
         norcow_wipe();
         ensure(secfalse, "pin_fails_check_max");
     }
@@ -442,7 +442,7 @@ secbool storage_unlock(uint32_t pin)
 
     if (sectrue != unlock(pin)) {
         // Wipe storage if too many failures
-        if (ctr >= PIN_MAX_TRIES) {
+        if (ctr + 1 >= PIN_MAX_TRIES) {
             norcow_wipe();
             ensure(secfalse, "pin_fails_check_max");
         }
@@ -569,6 +569,15 @@ secbool storage_has_pin(void)
         return secfalse;
     }
     return sectrue;
+}
+
+uint32_t storage_get_pin_rem(void)
+{
+    uint32_t ctr = 0;
+    if (sectrue != pin_get_fails(&ctr)) {
+        return 0;
+    }
+    return PIN_MAX_TRIES - ctr;
 }
 
 secbool storage_change_pin(uint32_t oldpin, uint32_t newpin)

@@ -26,6 +26,9 @@ class Storage:
     def has_pin(self) -> bool:
         return sectrue == self.lib.storage_has_pin()
 
+    def get_pin_rem(self) -> int:
+        return self.lib.storage_get_pin_rem()
+
     def change_pin(self, oldpin: int, newpin: int) -> None:
         if sectrue != self.lib.storage_change_pin(c.c_uint32(oldpin), c.c_uint32(newpin)):
             raise RuntimeError("Failed to change PIN.")
