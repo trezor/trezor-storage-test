@@ -9,10 +9,10 @@ class TestInitPin:
     def test_prng(self):
         p = Prng()
         buf = p.random_buffer(4)
-        assert buf == b"\x39\x30\x00\x00"
+        assert buf == b"\x2c\xdf\x7e\x39"
         buf = p.random_buffer(4)
-        assert buf == b"\x7e\x16\xdc\x53"
+        assert buf == b"\x18\xfb\x8a\xf5"
 
         p = Prng()
         buf = p.random_buffer(8)
-        assert buf == b"\x39\x30\x00\x00\x7e\x16\xdc\x53"
+        assert buf == b"\x2c\xdf\x7e\x39\x18\xfb\x8a\xf5"
