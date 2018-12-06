@@ -10,7 +10,7 @@ sys.path.append("../src")
 
 
 class TestNorcow:
-    def test_nocrow_set(self):
+    def test_norcow_set(self):
         n = Norcow()
         n.init()
         n.set(0x0001, b"123")
@@ -40,24 +40,24 @@ class TestNorcow:
         assert data[offset + 10 : offset + 12] == b"\x00\x00"  # alignment
         assert common.all_ff_bytes(data[offset + 12 :])
 
-    def test_nocrow_read_item(self):
+    def test_norcow_read_item(self):
         n = Norcow()
         n.init()
         n.set(0x0001, b"123")
         n.set(0x0002, b"456")
         n.set(0x0101, b"789")
-        key, value = n._read_item(0, 12)
+        key, value = n._read_item(12)
         assert key == b"\x02\x00"
         assert value == b"456"
-        key, value = n._read_item(0, 20)
+        key, value = n._read_item(20)
         assert key == b"\x01\x01"
         assert value == b"789"
 
         with pytest.raises(ValueError) as e:
-            key, value = n._read_item(0, 200)
+            key, value = n._read_item(200)
         assert "no data" in str(e)
 
-    def test_nocrow_get_item(self):
+    def test_norcow_get_item(self):
         n = Norcow()
         n.init()
         n.set(0x0001, b"123")
@@ -74,3 +74,28 @@ class TestNorcow:
         n.set(0x0002, b"earth")
         value = n.get(0x0002)
         assert value == b"earth"
+
+    def test_norcow_replace_item(self):
+        n = Norcow()
+        n.init()
+        n.set(0x0001, b"123")
+        n.set(0x0002, b"456")
+        n.set(0x0101, b"789")
+        value = n.get(0x0002)
+        assert value == b"456"
+
+        n.replace(0x0001, b"000")
+        value = n.get(0x0001)
+        assert value == b"000"
+
+        n.replace(0x0002, b"111")
+        value = n.get(0x0002)
+        assert value == b"111"
+        value = n.get(0x0001)
+        assert value == b"000"
+        value = n.get(0x0101)
+        assert value == b"789"
+
+        with pytest.raises(ValueError) as e:
+            n.replace(0x0001, b"00000")
+        assert "same length" in str(e)

@@ -27,7 +27,8 @@ class Norcow:
         self.active_offset = len(NORCOW_MAGIC)
 
     def get(self, key: int) -> bytes:
-        return self._find_item(self.active_sector, key)
+        value, _ = self._find_item(key)
+        return value
 
     def set(self, key: int, val: bytes) -> bool:
         if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
@@ -38,21 +39,30 @@ class Norcow:
         ] = data
         self.active_offset += len(data)
 
-    def _find_item(self, sector: int, key: int) -> bytes:
+    def replace(self, key: int, new_value: bytes) -> bool:
+        old_value, offset = self._find_item(key)
+        if not old_value:
+            raise ValueError("Norcow: key not found")
+        if len(old_value) != len(new_value):
+            raise ValueError("Norcow: replace works only with items of the same length")
+        data = pack("<HH", key, len(new_value)) + align4_data(new_value)
+        self.sectors[self.active_sector][offset : offset + len(data)] = data
+
+    def _find_item(self, key: int) -> (bytes, int):
         offset = len(NORCOW_MAGIC)
         value = False
         key = key.to_bytes(2, "little")
         while True:
             try:
-                k, v = self._read_item(sector, offset)
+                k, v = self._read_item(offset)
                 if k == key:
                     value = v
             except ValueError as e:
                 break
             offset = offset + 2 + 2 + len(v) + align4_int(len(v))
-        return value
+        return value, offset
 
-    def _read_item(self, sector: int, offset: int) -> (bytes, bytes):
+    def _read_item(self, offset: int) -> (bytes, bytes):
         key = self.sectors[self.active_sector][offset : offset + 2]
         if key == b"\xff\xff":
             raise ValueError("Norcow: no data on this offset")
