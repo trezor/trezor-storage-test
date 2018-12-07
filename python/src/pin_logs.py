@@ -39,11 +39,7 @@ def get_init_logs(guard_key: bytes) -> bytes:
     )
 
 
-def write_attempt_to_log(log: bytes) -> bytes:
-    guard_key = log[: consts.PIN_LOG_GUARD_KEY_SIZE]
-    guard_mask, guard = derive_guard_mask_and_value(guard_key)
-
-    pin_entry_log = log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
+def write_attempt_to_log(guard_mask: bytes, guard: bytes, pin_entry_log: bytes) -> bytes:
     pin_entry_log = to_int_by_words(pin_entry_log)
 
     assert (pin_entry_log & guard_mask) == guard
@@ -52,10 +48,7 @@ def write_attempt_to_log(log: bytes) -> bytes:
     clean_pin_entry_log = clean_pin_entry_log >> 2  # set 11 to 00
     pin_entry_log = (clean_pin_entry_log & (~guard_mask & consts.ALL_FF_LOG)) | guard
 
-    log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :] = to_bytes_by_words(
-        pin_entry_log
-    )
-    return log
+    return to_bytes_by_words(pin_entry_log)
 
 
 def remove_guard_bits(guard_mask: int, log: int) -> int:

@@ -35,17 +35,27 @@ class Storage:
         self.nc.wipe()
 
     def check_pin(self, pin: int) -> bool:
-        # TODO
         pin_log = self._get(consts.PIN_LOG_KEY)
-        log = pin_logs.write_attempt_to_log(pin_log)
-        self.nc.replace(consts.PIN_LOG_KEY, log)
+        guard_key = pin_log[: consts.PIN_LOG_GUARD_KEY_SIZE]
+        guard_mask, guard = pin_logs.derive_guard_mask_and_value(guard_key)
+        pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
+
+        pin_entry_log = pin_logs.write_attempt_to_log(guard_mask, guard, pin_entry_log)
+        pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :] = pin_entry_log
+        self.nc.replace(consts.PIN_LOG_KEY, pin_log)
 
         data = self.nc.get(consts.EDEK_PVC_KEY)
-        salt = data[: consts.PIN_SALT_SIZE]
+        salt = self.hw_salt_hash + data[: consts.PIN_SALT_SIZE]
         edek = data[consts.PIN_SALT_SIZE : consts.PIN_SALT_SIZE + consts.DEK_SIZE]
         pvc = data[consts.PIN_SALT_SIZE + consts.DEK_SIZE :]
+        is_valid = crypto.validate_pin(pin, salt, edek, pvc)
 
-        return crypto.validate_pin(pin, salt, edek, pvc)
+        if is_valid:
+            pin_success_log = pin_entry_log
+            pin_log[consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE] = pin_success_log
+            self.nc.replace(consts.PIN_LOG_KEY, pin_log)
+
+        return is_valid
 
     def unlock(self, pin: int) -> bool:
         self.unlocked = False
