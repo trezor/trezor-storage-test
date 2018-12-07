@@ -93,6 +93,7 @@ static void handle_fault();
  */
 static void wait_random()
 {
+#ifndef TREZOR_STORAGE_TEST
     int wait = random32() & 0xff;
     volatile int i = 0;
     volatile int j = wait;
@@ -108,6 +109,7 @@ static void wait_random()
     if (i != wait) {
         handle_fault();
     }
+#endif
 }
 
 static void derive_kek(uint32_t pin, const uint8_t *random_salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
