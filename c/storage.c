@@ -23,7 +23,7 @@
 #include "norcow.h"
 #include "storage.h"
 #include "pbkdf2.h"
-#include "hmac.h"
+#include "sha2.h"
 #include "rand.h"
 #include "memzero.h"
 #include "chacha20poly1305/rfc7539.h"
@@ -198,28 +198,15 @@ static secbool pin_logs_init()
     return norcow_set(PIN_LOGS_KEY, logs, sizeof(logs));
 }
 
-secbool storage_init_salt(const uint8_t *salt, const uint16_t len)
-{
-    // Salt must be added prior to storage initialization.
-    if (sectrue == initialized) {
-        return secfalse;
-    }
-
-    HMAC_SHA256_CTX hctx;
-    hmac_sha256_Init(&hctx, hardware_salt, sizeof(hardware_salt));
-    hmac_sha256_Update(&hctx, salt, len);
-    hmac_sha256_Final(&hctx, hardware_salt);
-    memzero(&hctx, sizeof(hctx));
-    return sectrue;
-}
-
-void storage_init(PIN_UI_WAIT_CALLBACK callback)
+void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint16_t salt_len)
 {
     initialized = secfalse;
     unlocked = secfalse;
     norcow_init();
     initialized = sectrue;
     ui_callback = callback;
+
+    sha256_Raw(salt, salt_len, hardware_salt);
 
     // If there is no EDEK, then generate a random DEK and store it.
     const void *val;

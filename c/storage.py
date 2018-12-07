@@ -9,12 +9,8 @@ class Storage:
     def __init__(self) -> None:
         self.lib = c.cdll.LoadLibrary(fname)
 
-    def init_salt(self, salt: bytes) -> None:
-        if sectrue != self.lib.storage_init_salt(salt, c.c_uint16(len(salt))):
-            raise RuntimeError("Failed to initialize hardware salt.")
-
-    def init(self) -> None:
-        self.lib.storage_init(0)
+    def init(self, salt: bytes) -> None:
+        self.lib.storage_init(0, salt, c.c_uint16(len(salt)))
 
     def wipe(self) -> None:
         self.lib.storage_wipe()
