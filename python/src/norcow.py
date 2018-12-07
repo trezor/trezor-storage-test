@@ -1,3 +1,4 @@
+import sys
 from struct import pack
 
 NORCOW_SECTOR_COUNT = 2
@@ -51,23 +52,25 @@ class Norcow:
     def _find_item(self, key: int) -> (bytes, int):
         offset = len(NORCOW_MAGIC)
         value = False
-        key = key.to_bytes(2, "little")
+        key = key.to_bytes(2, sys.byteorder)
+        pos = offset
         while True:
             try:
                 k, v = self._read_item(offset)
                 if k == key:
                     value = v
+                    pos = offset
             except ValueError as e:
                 break
             offset = offset + 2 + 2 + len(v) + align4_int(len(v))
-        return value, offset
+        return value, pos
 
     def _read_item(self, offset: int) -> (bytes, bytes):
         key = self.sectors[self.active_sector][offset : offset + 2]
         if key == b"\xff\xff":
             raise ValueError("Norcow: no data on this offset")
         length = self.sectors[self.active_sector][offset + 2 : offset + 4]
-        length = int.from_bytes(length, "little")
+        length = int.from_bytes(length, sys.byteorder)
         value = self.sectors[self.active_sector][offset + 4 : offset + 4 + length]
         return key, value
 

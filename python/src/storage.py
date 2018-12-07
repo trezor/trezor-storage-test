@@ -1,4 +1,4 @@
-from . import consts, crypto, pin
+from . import consts, crypto, pin_logs
 from .norcow import Norcow
 from .prng import Prng
 
@@ -31,6 +31,11 @@ class Storage:
         self.nc.wipe()
 
     def check_pin(self, pin: int) -> bool:
+        # TODO
+        pin_log = self._get(consts.PIN_LOG_KEY)
+        log = pin_logs.write_attempt_to_log(pin_log)
+        self.nc.replace(consts.PIN_LOG_KEY, log)
+
         data = self.nc.get(consts.EDEK_PVC_KEY)
         salt = data[: consts.PIN_SALT_SIZE]
         edek = data[consts.PIN_SALT_SIZE : consts.PIN_SALT_SIZE + consts.DEK_SIZE]
@@ -59,8 +64,8 @@ class Storage:
         if not self.initialized or app == 0:
             raise ValueError("Storage not initialized or APP_ID = 0")
         if not self.unlocked or (app & 0x80) == 0:
-            raise ValueError("Storage locked or (app & 0x80) = 0")
-        return self.nc.get(key)
+            raise ValueError("Storage locked or field private")
+        return self._get(key)
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
@@ -72,7 +77,10 @@ class Storage:
         self.set_pin(consts.PIN_EMPTY)
         self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
         guard_key = self.prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
-        self._set(consts.PIN_LOG_KEY, pin.get_init_logs(guard_key))
+        self._set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
+
+    def _get(self, key: int) -> bytes:
+        return self.nc.get(key)
 
     def _set(self, key: int, val: bytes) -> bool:
         return self.nc.set(key, val)
