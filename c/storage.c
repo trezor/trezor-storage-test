@@ -88,6 +88,28 @@ static const uint8_t FALSE_BYTE = 0;
 
 static void handle_fault();
 
+/*
+ *  Generates a delay of random length. Use this to protect sensitive code against fault injection.
+ */
+static void wait_random()
+{
+    int wait = random32() & 0xff;
+    volatile int i = 0;
+    volatile int j = wait;
+    while (i < wait) {
+        if (i + j != wait) {
+            handle_fault();
+        }
+        ++i;
+        --j;
+    }
+
+    // Double-check loop completion.
+    if (i != wait) {
+        handle_fault();
+    }
+}
+
 static void derive_kek(uint32_t pin, const uint8_t *random_salt, uint8_t kek[SHA256_DIGEST_LENGTH], uint8_t keiv[SHA256_DIGEST_LENGTH])
 {
 #if BYTE_ORDER == BIG_ENDIAN
@@ -163,6 +185,7 @@ static secbool pin_logs_init()
 
     uint32_t guard_mask;
     uint32_t guard;
+    wait_random();
     if (sectrue != expand_guard_key(logs[0], &guard_mask, &guard)) {
         return secfalse;
     }
@@ -220,6 +243,7 @@ static secbool pin_fails_reset()
 
     uint32_t guard_mask;
     uint32_t guard;
+    wait_random();
     if (sectrue != expand_guard_key(*(const uint32_t*)logs, &guard_mask, &guard)) {
         return secfalse;
     }
@@ -245,6 +269,7 @@ static secbool pin_fails_increase()
     const void *logs = NULL;
     uint16_t len = 0;
 
+    wait_random();
     if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
         handle_fault();
         return secfalse;
@@ -252,6 +277,7 @@ static secbool pin_fails_increase()
 
     uint32_t guard_mask;
     uint32_t guard;
+    wait_random();
     if (sectrue != expand_guard_key(*(const uint32_t*)logs, &guard_mask, &guard)) {
         handle_fault();
         return secfalse;
@@ -259,15 +285,18 @@ static secbool pin_fails_increase()
 
     const uint32_t *entry_log = ((const uint32_t*)logs) + 1 + PIN_LOG_WORDS;
     for (size_t i = 0; i < PIN_LOG_WORDS; ++i) {
+        wait_random();
         if ((entry_log[i] & guard_mask) != guard) {
             handle_fault();
             return secfalse;
         }
         if (entry_log[i] != guard) {
+            wait_random();
             uint32_t word = entry_log[i] & ~guard_mask;
             word = ((word >> 1) | word) & LOW_MASK;
             word = (word >> 2) | (word >> 1);
 
+            wait_random();
             if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + 1 + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
                 handle_fault();
                 return secfalse;
@@ -286,6 +315,7 @@ static secbool pin_get_fails(uint32_t *ctr)
 
     const void *logs = NULL;
     uint16_t len = 0;
+    wait_random();
     if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
         handle_fault();
         return secfalse;
@@ -293,6 +323,7 @@ static secbool pin_get_fails(uint32_t *ctr)
 
     uint32_t guard_mask;
     uint32_t guard;
+    wait_random();
     if (sectrue != expand_guard_key(*(const uint32_t*)logs, &guard_mask, &guard)) {
         handle_fault();
         return secfalse;
@@ -327,6 +358,7 @@ static secbool pin_get_fails(uint32_t *ctr)
     }
 
     // Strip the guard bits from the current entry word and duplicate each data bit.
+    wait_random();
     uint32_t word = entry_log[current] & ~guard_mask;
     word = ((word >> 1) | word ) & LOW_MASK;
     word = word | (word << 1);
@@ -341,6 +373,7 @@ static secbool pin_get_fails(uint32_t *ctr)
     }
 
     // Count the number of set bits in the two current words of the success log.
+    wait_random();
     uint32_t fails = success_log[current-1] ^ entry_log[current-1];
     fails = fails - ((fails >> 1) & LOW_MASK);
     uint32_t fails2 = success_log[current] ^ entry_log[current];
@@ -379,13 +412,13 @@ static secbool unlock(uint32_t pin)
     chacha20poly1305_decrypt(&ctx, edek, dek, DEK_SIZE);
     rfc7539_finish(&ctx, 0, DEK_SIZE, mac);
     memzero(&ctx, sizeof(ctx));
+    wait_random();
     if (memcmp(mac, pvc, PVC_SIZE) == 0) {
         memcpy(cached_dek, dek, sizeof(dek));
         ret = sectrue;
     }
     memzero(dek, sizeof(dek));
     memzero(mac, sizeof(mac));
-
     return ret;
 }
 
@@ -399,6 +432,7 @@ secbool storage_unlock(uint32_t pin)
     }
 
     // Wipe storage if too many failures
+    wait_random();
     if (ctr >= PIN_MAX_TRIES) {
         norcow_wipe();
         ensure(secfalse, "pin_fails_check_max");
@@ -442,6 +476,7 @@ secbool storage_unlock(uint32_t pin)
 
     if (sectrue != unlock(pin)) {
         // Wipe storage if too many failures
+        wait_random();
         if (ctr + 1 >= PIN_MAX_TRIES) {
             norcow_wipe();
             ensure(secfalse, "pin_fails_check_max");
