@@ -38,6 +38,7 @@ DEK_SIZE = 32
 
 # The length of the random salt in bytes.
 PIN_SALT_SIZE = 4
+PIN_HARDWARE_SALT_SIZE = 32
 
 # The length of the PIN verification code in bytes.
 PVC_SIZE = 8

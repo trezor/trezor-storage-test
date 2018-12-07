@@ -1,23 +1,27 @@
 from . import consts, crypto, pin_logs
 from .norcow import Norcow
 from .prng import Prng
+import hashlib
 
 
 class Storage:
-    def init(self) -> None:
+
+    def init(self, hardware_salt: bytes) -> None:
         self.nc = Norcow()
         self.initialized = False
         self.unlocked = False
         self.nc.init()
         self.initialized = True
         self.prng = Prng()
+        self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
         self._init_pin()
 
     def set_pin(self, pin: int) -> bool:
         # generate random Data Encryption Key
         dek = self.prng.random_buffer(consts.DEK_SIZE)
 
-        salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
+        random_salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
+        salt = self.hw_salt_hash + random_salt
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
 
         # Encrypted Data Encryption Key
@@ -25,7 +29,7 @@ class Storage:
         # Pin Verification Code
         pvc = tag[: consts.PVC_SIZE]
 
-        return self._set(consts.EDEK_PVC_KEY, salt + edek + pvc)
+        return self._set(consts.EDEK_PVC_KEY, random_salt + edek + pvc)
 
     def wipe(self) -> None:
         self.nc.wipe()
