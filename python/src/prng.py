@@ -1,3 +1,6 @@
+import sys
+
+
 class Prng:
     def __init__(self, seed=0):
         self.seed = seed
@@ -9,7 +12,7 @@ class Prng:
         b = bytearray(length)
         for i in range(length):
             if i % 4 == 0:
-                rand = self.random32().to_bytes(4, "little")
+                rand = self.random32().to_bytes(4, sys.byteorder)
             b[i] = rand[i % 4]
         return b
 
