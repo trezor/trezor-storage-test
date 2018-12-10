@@ -5,7 +5,7 @@ class Prng:
     def __init__(self, seed=0):
         self.seed = seed
 
-    def random_buffer(self, length: int):
+    def random_buffer(self, length: int) -> bytes:
         length = length
         if length % 4 != 0:
             raise ValueError("Use only for whole words (multiples of 4 bytes)")
@@ -14,7 +14,7 @@ class Prng:
             if i % 4 == 0:
                 rand = self.random32().to_bytes(4, sys.byteorder)
             b[i] = rand[i % 4]
-        return b
+        return bytes(b)
 
     def random8(self):
         # & 0x7fffffff is equal to % (2**31)

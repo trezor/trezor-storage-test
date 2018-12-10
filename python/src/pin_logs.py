@@ -39,7 +39,9 @@ def get_init_logs(guard_key: bytes) -> bytes:
     )
 
 
-def write_attempt_to_log(guard_mask: bytes, guard: bytes, pin_entry_log: bytes) -> bytes:
+def write_attempt_to_log(
+    guard_mask: bytes, guard: bytes, pin_entry_log: bytes
+) -> bytes:
     pin_entry_log = to_int_by_words(pin_entry_log)
 
     assert (pin_entry_log & guard_mask) == guard
