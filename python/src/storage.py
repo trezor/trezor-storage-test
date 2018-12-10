@@ -116,7 +116,7 @@ class Storage:
 
     def _set_bool(self, key: int, val: bool) -> bool:
         if val:
-            return self.nc.set(key, consts.TRUE_BYTE)
+            return self.nc.set(key, b"\x01")
         # False is stored as an empty value
         return self.nc.set(key, bytes())
 
