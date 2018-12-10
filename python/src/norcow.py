@@ -43,7 +43,7 @@ class Norcow:
 
     def _erase_old(self, key: int):
         value, pos = self._find_item(key)
-        if not value:
+        if value is False:
             return
         wiped_data = b"\x00\x00"  # key and app id
         # length needs to remain

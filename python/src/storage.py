@@ -19,10 +19,17 @@ class Storage:
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
         self._init_pin()
 
-    def set_pin(self, pin: int) -> bool:
+    def _init_pin(self):
         # generate random Data Encryption Key
         self.dek = self.prng.random_buffer(consts.DEK_SIZE)
 
+        self._set_pin(consts.PIN_EMPTY)
+        self._set_bool(consts.PIN_NOT_SET_KEY, True)
+
+        guard_key = self.prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
+        self._set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
+
+    def _set_pin(self, pin: int) -> bool:
         random_salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
         salt = self.hw_salt_hash + random_salt
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
@@ -73,11 +80,12 @@ class Storage:
         raise NotImplementedError
 
     def change_pin(self, oldpin: int, newpin: int) -> None:
-        if not self.initialized or self.unlocked:
+        if not self.initialized or not self.unlocked:
             raise ValueError("Storage not initialized or locked")
         if not self.check_pin(oldpin):
             raise ValueError("Invalid PIN")
-        raise NotImplementedError
+        self._set_pin(newpin)
+        self._set_bool(consts.PIN_NOT_SET_KEY, False)
 
     def get(self, key: int) -> bytes:
         app = key >> 8
@@ -95,12 +103,6 @@ class Storage:
             return self._set(key, val)
         return self._encrypt_set(key, val)
 
-    def _init_pin(self):
-        self.set_pin(consts.PIN_EMPTY)
-        self._set(consts.PIN_NOT_SET_KEY, consts.TRUE_BYTE)
-        guard_key = self.prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
-        self._set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
-
     def _encrypt_set(self, key: int, val: bytes) -> bool:
         iv = self.prng.random_buffer(consts.CHACHA_IV_SIZE)
         cipher_text, tag = crypto.chacha_poly_encrypt(self.dek, iv, val)
@@ -111,6 +113,12 @@ class Storage:
 
     def _set(self, key: int, val: bytes) -> bool:
         return self.nc.set(key, val)
+
+    def _set_bool(self, key: int, val: bool) -> bool:
+        if val:
+            return self.nc.set(key, consts.TRUE_BYTE)
+        # False is stored as an empty value
+        return self.nc.set(key, bytes())
 
     def _dump(self) -> bytes:
         return self.nc._dump()
