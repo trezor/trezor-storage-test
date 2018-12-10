@@ -26,6 +26,7 @@ for s in [sc, sp]:
     s.unlock(1)
     s.set(0xbeef, b"hello")
     s.set(0x03fe, b"world!")
+    s.set(0xbeef, b"ahojj")
     d = s._dump()
     print(d[0][:256].hex(), d[1][:256].hex())
     h = [hash(x) for x in d]

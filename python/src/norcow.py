@@ -34,11 +34,24 @@ class Norcow:
     def set(self, key: int, val: bytes) -> bool:
         if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
             self._compact()
+        self._erase_old(key)
         data = pack("<HH", key, len(val)) + align4_data(val)
         self.sectors[self.active_sector][
             self.active_offset : self.active_offset + len(data)
         ] = data
         self.active_offset += len(data)
+
+    def _erase_old(self, key: int):
+        value, pos = self._find_item(key)
+        if not value:
+            return
+        wiped_data = b"\x00\x00"  # key and app id
+        # length needs to remain
+        wiped_data = wiped_data + len(value).to_bytes(2, sys.byteorder)
+        wiped_data = wiped_data + b"\x00" * (len(value) + align4_int(len(value)))
+        self.sectors[self.active_sector][
+            pos : pos + self._norcow_item_length(value)
+        ] = wiped_data
 
     def replace(self, key: int, new_value: bytes) -> bool:
         old_value, offset = self._find_item(key)
@@ -62,8 +75,12 @@ class Norcow:
                     pos = offset
             except ValueError as e:
                 break
-            offset = offset + 2 + 2 + len(v) + align4_int(len(v))
+            offset = offset + self._norcow_item_length(v)
         return value, pos
+
+    def _norcow_item_length(self, data: bytes) -> int:
+        # APP_ID, KEY_ID, LENGTH, DATA, ALIGNMENT
+        return 1 + 1 + 2 + len(data) + align4_int(len(data))
 
     def _read_item(self, offset: int) -> (bytes, bytes):
         key = self.sectors[self.active_sector][offset : offset + 2]
