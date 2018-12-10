@@ -68,18 +68,22 @@ static secbool norcow_write(uint8_t sector, uint32_t offset, uint32_t prefix, co
 
     // write prefix
     ensure(flash_write_word(norcow_sectors[sector], offset, prefix), NULL);
+    offset += NORCOW_PREFIX_LEN;
 
     if (data != NULL) {
-        offset += NORCOW_PREFIX_LEN;
         // write data
         for (uint16_t i = 0; i < len; i++, offset++) {
             ensure(flash_write_byte(norcow_sectors[sector], offset, data[i]), NULL);
         }
-        // pad with zeroes
-        for (; offset % NORCOW_WORD_SIZE; offset++) {
-            ensure(flash_write_byte(norcow_sectors[sector], offset, 0x00), NULL);
-        }
+    } else {
+        offset += len;
     }
+
+    // pad with zeroes
+    for (; offset % NORCOW_WORD_SIZE; offset++) {
+        ensure(flash_write_byte(norcow_sectors[sector], offset, 0x00), NULL);
+    }
+
     ensure(flash_lock(), NULL);
     return sectrue;
 }
