@@ -1,9 +1,13 @@
+.PHONY: tests
+
+build:
+	$(MAKE) -C c
+
 ## tests commands:
-run_tests:
+tests:
 	pytest --ignore=trezor-crypto
 
 ## style commands:
-
 style: ## run code style check on application sources and tests
 	flake8 python/ tests/
 	isort --check-only
