@@ -47,4 +47,14 @@ def test_change_pin():
 
 
 def test_has_pin():
-    assert True  # TODO
+    sc = StorageC()
+    sp = StoragePy()
+    for s in (sc, sp):
+        s.init(b"\x00\x00\x00\x00\x00\x00")
+        assert not s.has_pin()
+        s.unlock(1)
+        assert not s.has_pin()
+        s.change_pin(1, 221)
+        assert s.has_pin()
+        s.change_pin(221, 1)
+        assert not s.has_pin()

@@ -24,12 +24,11 @@ class Storage:
         self.dek = self.prng.random_buffer(consts.DEK_SIZE)
 
         self._set_pin(consts.PIN_EMPTY)
-        self._set_bool(consts.PIN_NOT_SET_KEY, True)
 
         guard_key = self.prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
         self._set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
 
-    def _set_pin(self, pin: int) -> bool:
+    def _set_pin(self, pin: int):
         random_salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
         salt = self.hw_salt_hash + random_salt
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
@@ -39,7 +38,11 @@ class Storage:
         # Pin Verification Code
         pvc = tag[: consts.PVC_SIZE]
 
-        return self._set(consts.EDEK_PVC_KEY, random_salt + edek + pvc)
+        self._set(consts.EDEK_PVC_KEY, random_salt + edek + pvc)
+        if pin == consts.PIN_EMPTY:
+            self._set_bool(consts.PIN_NOT_SET_KEY, True)
+        else:
+            self._set_bool(consts.PIN_NOT_SET_KEY, False)
 
     def wipe(self) -> None:
         self.nc.wipe()
@@ -78,7 +81,8 @@ class Storage:
             raise RuntimeError("Failed to unlock storage.")
 
     def has_pin(self) -> bool:
-        raise NotImplementedError
+        val = self._get(consts.PIN_NOT_SET_KEY)
+        return val != consts.TRUE_BYTE
 
     def change_pin(self, oldpin: int, newpin: int) -> None:
         if not self.initialized or not self.unlocked:
@@ -86,7 +90,6 @@ class Storage:
         if not self.check_pin(oldpin):
             raise RuntimeError("Invalid PIN")
         self._set_pin(newpin)
-        self._set_bool(consts.PIN_NOT_SET_KEY, False)
 
     def get(self, key: int) -> bytes:
         app = key >> 8
@@ -117,7 +120,7 @@ class Storage:
 
     def _set_bool(self, key: int, val: bool) -> bool:
         if val:
-            return self.nc.set(key, b"\x01")
+            return self.nc.set(key, consts.TRUE_BYTE)
         # False is stored as an empty value
         return self.nc.set(key, bytes())
 

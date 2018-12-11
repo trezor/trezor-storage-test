@@ -21,6 +21,8 @@ EDEK_PVC_KEY = 0x0002
 # Norcow storage key of the PIN set flag.
 PIN_NOT_SET_KEY = 0x0003
 
+TRUE_BYTE = b"\x01"
+
 # The PIN value corresponding to an empty PIN.
 PIN_EMPTY = 1
 
