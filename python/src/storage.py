@@ -74,7 +74,8 @@ class Storage:
         self.unlocked = False
         if self.initialized and self.check_pin(pin):
             self.unlocked = True
-        raise RuntimeError("Failed to unlock storage.")
+        else:
+            raise RuntimeError("Failed to unlock storage.")
 
     def has_pin(self) -> bool:
         raise NotImplementedError
