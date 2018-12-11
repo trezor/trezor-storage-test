@@ -1,3 +1,7 @@
+## tests commands:
+run_tests:
+	pytest --ignore=trezor-crypto
+
 ## style commands:
 
 style: ## run code style check on application sources and tests
