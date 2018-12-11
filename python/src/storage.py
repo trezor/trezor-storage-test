@@ -70,35 +70,35 @@ class Storage:
 
         return is_valid
 
-    def unlock(self, pin: int) -> bool:
+    def unlock(self, pin: int) -> None:
         self.unlocked = False
         if self.initialized and self.check_pin(pin):
             self.unlocked = True
-        return self.unlocked
+        raise RuntimeError("Failed to unlock storage.")
 
     def has_pin(self) -> bool:
         raise NotImplementedError
 
     def change_pin(self, oldpin: int, newpin: int) -> None:
         if not self.initialized or not self.unlocked:
-            raise ValueError("Storage not initialized or locked")
+            raise RuntimeError("Storage not initialized or locked")
         if not self.check_pin(oldpin):
-            raise ValueError("Invalid PIN")
+            raise RuntimeError("Invalid PIN")
         self._set_pin(newpin)
         self._set_bool(consts.PIN_NOT_SET_KEY, False)
 
     def get(self, key: int) -> bytes:
         app = key >> 8
         if not self.initialized or app == 0:
-            raise ValueError("Storage not initialized or APP_ID = 0")
+            raise RuntimeError("Storage not initialized or APP_ID = 0")
         if not self.unlocked or (app & 0x80) == 0:
-            raise ValueError("Storage locked or field private")
+            raise RuntimeError("Storage locked or field private")
         return self._get(key)
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
         if not self.initialized or not self.unlocked or app == 0:
-            raise ValueError("Storage not initialized or locked or app = 0 (PIN)")
+            raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
         if app & consts.FLAG_PUBLIC:
             return self._set(key, val)
         return self._encrypt_set(key, val)
