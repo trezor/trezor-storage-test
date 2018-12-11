@@ -5,7 +5,7 @@ build:
 
 ## tests commands:
 tests:
-	pytest --ignore=trezor-crypto
+	pytest --ignore=vendor
 
 ## style commands:
 style: ## run code style check on application sources and tests
