@@ -31,6 +31,12 @@ def chacha_poly_encrypt(key: bytes, iv: bytes, data: bytes) -> (bytes, bytes):
     return chacha_output[: len(data)], chacha_output[len(data) :]
 
 
+def chacha_poly_decrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
+    chacha = ChaCha20Poly1305(key)
+    chacha_output = chacha.decrypt(bytes(iv), bytes(data), None)
+    return chacha_output
+
+
 def validate_pin(pin: int, salt: bytes, edek: bytes, pvc: bytes):
     """
     This a little bit hackish. We do not store the whole

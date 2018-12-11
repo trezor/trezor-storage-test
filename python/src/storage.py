@@ -95,9 +95,12 @@ class Storage:
         app = key >> 8
         if not self.initialized or app == 0:
             raise RuntimeError("Storage not initialized or APP_ID = 0")
-        if not self.unlocked or (app & 0x80) == 0:
-            raise RuntimeError("Storage locked or field private")
-        return self._get(key)
+        if not self.unlocked and not (app & consts.FLAG_PUBLIC):
+            # public fields can be read from an unlocked device
+            raise RuntimeError("Storage locked")
+        if app & consts.FLAG_PUBLIC:
+            return self._get(key)
+        return self._get_decrypt(key)
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
@@ -105,12 +108,19 @@ class Storage:
             raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
         if app & consts.FLAG_PUBLIC:
             return self._set(key, val)
-        return self._encrypt_set(key, val)
+        return self._set_encrypt(key, val)
 
-    def _encrypt_set(self, key: int, val: bytes) -> bool:
+    def _set_encrypt(self, key: int, val: bytes) -> bool:
         iv = self.prng.random_buffer(consts.CHACHA_IV_SIZE)
         cipher_text, tag = crypto.chacha_poly_encrypt(self.dek, iv, val)
         return self._set(key, iv + cipher_text + tag)
+
+    def _get_decrypt(self, key: int) -> bytes:
+        data = self._get(key)
+        iv = data[: consts.CHACHA_IV_SIZE]
+        # cipher text with MAC
+        chacha_input = data[consts.CHACHA_IV_SIZE :]
+        return crypto.chacha_poly_decrypt(self.dek, iv, chacha_input)
 
     def _get(self, key: int) -> bytes:
         return self.nc.get(key)
