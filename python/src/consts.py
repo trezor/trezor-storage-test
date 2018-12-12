@@ -61,4 +61,4 @@ KEK_SIZE = 32
 KEIV_SIZE = 12
 
 # Signalizes free storage.
-NORCOW_KEY_FREE = b"\xFF\xFF"
+NORCOW_KEY_FREE = 0xFFFF

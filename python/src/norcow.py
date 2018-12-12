@@ -70,7 +70,6 @@ class Norcow:
     def _find_item(self, key: int) -> (bytes, int):
         offset = len(NORCOW_MAGIC)
         value = False
-        key = key.to_bytes(2, sys.byteorder)
         pos = offset
         while True:
             try:
@@ -87,8 +86,9 @@ class Norcow:
         # APP_ID, KEY_ID, LENGTH, DATA, ALIGNMENT
         return 1 + 1 + 2 + len(data) + align4_int(len(data))
 
-    def _read_item(self, offset: int) -> (bytes, bytes):
+    def _read_item(self, offset: int) -> (int, bytes):
         key = self.sectors[self.active_sector][offset : offset + 2]
+        key = int.from_bytes(key, sys.byteorder)
         if key == consts.NORCOW_KEY_FREE:
             raise ValueError("Norcow: no data on this offset")
         length = self.sectors[self.active_sector][offset + 2 : offset + 4]

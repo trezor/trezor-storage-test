@@ -1,3 +1,5 @@
+import pytest
+
 from c.storage import Storage as StorageC
 from python.src.storage import Storage as StoragePy
 
@@ -54,3 +56,7 @@ def test_set_get():
 
         assert datasc == sc._dump()
         assert datasp == sp._dump()
+
+    for s in (sc, sp):
+        with pytest.raises(RuntimeError):
+            s.set(0xFFFF, b"Hello")

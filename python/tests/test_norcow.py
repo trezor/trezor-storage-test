@@ -42,10 +42,10 @@ def test_norcow_read_item():
     n.set(0x0002, b"456")
     n.set(0x0101, b"789")
     key, value = n._read_item(12)
-    assert key == b"\x02\x00"
+    assert key == 0x0002
     assert value == b"456"
     key, value = n._read_item(20)
-    assert key == b"\x01\x01"
+    assert key == 0x0101
     assert value == b"789"
 
     with pytest.raises(ValueError) as e:
