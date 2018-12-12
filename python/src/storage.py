@@ -1,35 +1,37 @@
 import hashlib
+import sys
 
-from . import consts, crypto, pin_logs
+from . import consts, crypto, pin_logs, prng
 from .norcow import Norcow
-from .prng import Prng
 
 
 class Storage:
-
-    initialized = False
-    unlocked = False
-    dek = None
+    def __init__(self):
+        self.initialized = False
+        self.unlocked = False
+        self.dek = None
 
     def init(self, hardware_salt: bytes) -> None:
+        self.initialized = False
+        self.unlocked = False
         self.nc = Norcow()
         self.nc.init()
         self.initialized = True
-        self.prng = Prng()
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
+        # TODO check if EDEK already present?
         self._init_pin()
 
     def _init_pin(self):
         # generate random Data Encryption Key
-        self.dek = self.prng.random_buffer(consts.DEK_SIZE)
+        self.dek = prng.random_buffer(consts.DEK_SIZE)
 
         self._set_pin(consts.PIN_EMPTY)
 
-        guard_key = self.prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
+        guard_key = prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
         self._set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
 
     def _set_pin(self, pin: int):
-        random_salt = self.prng.random_buffer(consts.PIN_SALT_SIZE)
+        random_salt = prng.random_buffer(consts.PIN_SALT_SIZE)
         salt = self.hw_salt_hash + random_salt
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
 
@@ -93,8 +95,8 @@ class Storage:
 
     def get(self, key: int) -> bytes:
         app = key >> 8
-        if not self.initialized or app == 0:
-            raise RuntimeError("Storage not initialized or APP_ID = 0")
+        if not self.initialized or app == consts.PIN_APP_ID:
+            raise RuntimeError("Storage not initialized or app = 0 (PIN)")
         if not self.unlocked and not (app & consts.FLAG_PUBLIC):
             # public fields can be read from an unlocked device
             raise RuntimeError("Storage locked")
@@ -104,15 +106,17 @@ class Storage:
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
-        if not self.initialized or not self.unlocked or app == 0:
+        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
             raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
         if app & consts.FLAG_PUBLIC:
             return self._set(key, val)
         return self._set_encrypt(key, val)
 
     def _set_encrypt(self, key: int, val: bytes) -> bool:
-        iv = self.prng.random_buffer(consts.CHACHA_IV_SIZE)
-        cipher_text, tag = crypto.chacha_poly_encrypt(self.dek, iv, val)
+        iv = prng.random_buffer(consts.CHACHA_IV_SIZE)
+        cipher_text, tag = crypto.chacha_poly_encrypt(
+            self.dek, iv, val, key.to_bytes(2, sys.byteorder)
+        )
         return self._set(key, iv + cipher_text + tag)
 
     def _get_decrypt(self, key: int) -> bytes:
@@ -120,7 +124,9 @@ class Storage:
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
         chacha_input = data[consts.CHACHA_IV_SIZE :]
-        return crypto.chacha_poly_decrypt(self.dek, iv, chacha_input)
+        return crypto.chacha_poly_decrypt(
+            self.dek, key, iv, chacha_input, key.to_bytes(2, sys.byteorder)
+        )
 
     def _get(self, key: int) -> bytes:
         return self.nc.get(key)

@@ -1,25 +1,21 @@
-from unittest import mock
-
 from . import common
-from ..src.prng import Prng
 from ..src.storage import Storage
 
 
 def test_init_pin():
-    with mock.patch.object(Prng, "random_buffer", common.mock_random_simple):
-        s = Storage()
-        s.init(b"\x00\x00\x00\x00\x00\x00")
-        d = s._dump()
-        assert (
-            d[0][:256].hex()
-            == "4e52435702002c000101010108e3d2771e00e8d483438695afdbb2907a66f602470bf215491fef3e99558dd5d2e22421db1aef8103000100010000000100840001010101a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        )
-        assert common.all_ff_bytes(d[1][:256])
+    s = Storage()
+    s.init(b"\x00\x00\x00\x00\x00\x00")
+    d = s._dump()
+    assert (
+        d[0][:256].hex()
+        == "4e52435702002c008cbfde19939337f59335bf515108d9955cdd57be41f4832ea7bff94904e5a8f4c2e0a6943aece2c12940191b03000100010000000100840078dbead57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd57edfffd5ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    )
+    assert common.all_ff_bytes(d[1][:256])
 
-        s = Storage()
-        s.init(b"\x00\x00\x00\x00\x00\x01")
-        d = s._dump()
-        assert (
-            d[0][:256].hex()
-            == "4e52435702002c0001010101fe1b1cce20b9a8a834fe665013eb5c1c8cb9b67bbd08a32ec27a1b57b160240cab7f97e500278ab303000100010000000100840001010101a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        )
+    s = Storage()
+    s.init(b"\x00\x00\x00\x00\x00\x01")
+    d = s._dump()
+    assert (
+        d[0][:256].hex()
+        == "4e52435702002c0084971631844721eeb3ddf0f30f88faee14f70fe97e084ae9784cf22e79e29586590bfe800dfc3f99bec5ba56030001000100000001008400f033a26dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dfabbfb7dffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    )

@@ -19,12 +19,6 @@ def test_init_pin():
     sp.init(b"\x22\x00\xDD\x00\x00\xBE")
     assert common.memory_equals(sc, sp)
 
-    sc = StorageC()
-    sp = StoragePy()
-    sc.init(b"\x11\x11\x11\x11\x11\x11")
-    sp.init(b"\x22\x22\x22\x22\x22\x22")
-    assert not common.memory_equals(sc, sp)
-
 
 def test_change_pin():
     sc = StorageC()
