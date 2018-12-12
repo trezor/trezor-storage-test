@@ -30,6 +30,9 @@
 #define NORCOW_WORD_SIZE  (sizeof(uint32_t))
 #define NORCOW_PREFIX_LEN NORCOW_WORD_SIZE
 
+// The key value which is used to indicate that the entry is not set.
+#define NORCOW_KEY_FREE   (0xFFFF)
+
 // The length of the sector header in bytes. The header is preserved between sector erasures.
 #if TREZOR_MODEL == 1
 #define NORCOW_HEADER_LEN (0x100)
@@ -127,7 +130,7 @@ static secbool read_item(uint8_t sector, uint32_t offset, uint16_t *key, const v
     if (k == NULL) return secfalse;
     *pos += 2;
     memcpy(key, k, sizeof(uint16_t));
-    if (*key == 0xFFFF) {
+    if (*key == NORCOW_KEY_FREE) {
         return secfalse;
     }
 
@@ -343,6 +346,11 @@ secbool norcow_get(uint16_t key, const void **val, uint16_t *len)
  */
 secbool norcow_set(uint16_t key, const void *val, uint16_t len)
 {
+    // Key 0xffff is used as a marker to indicate that the entry is not set.
+    if (key == NORCOW_KEY_FREE) {
+        return secfalse;
+    }
+
     // check whether there is enough free space
     // and compact if full
     if (norcow_active_offset + NORCOW_PREFIX_LEN + len > NORCOW_SECTOR_SIZE) {

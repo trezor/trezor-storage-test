@@ -28,52 +28,55 @@
 #include "memzero.h"
 #include "chacha20poly1305/rfc7539.h"
 
-#define LOW_MASK 0x55555555
+#define LOW_MASK            0x55555555
+
+// The APP namespace which is reserved for PIN related values.
+#define APP_PIN             0x00
 
 // Norcow storage key of the PIN entry log and PIN success log.
-#define PIN_LOGS_KEY 0x0001
+#define PIN_LOGS_KEY        ((APP_PIN << 8) | 0x01)
 
 // Norcow storage key of the combined salt, EDEK and PIN verification code entry.
-#define EDEK_PVC_KEY 0x0002
+#define EDEK_PVC_KEY        ((APP_PIN << 8) | 0x02)
 
 // Norcow storage key of the PIN set flag.
-#define PIN_NOT_SET_KEY 0x0003
+#define PIN_NOT_SET_KEY     ((APP_PIN << 8) | 0x03)
 
 // The PIN value corresponding to an empty PIN.
-#define PIN_EMPTY 1
+#define PIN_EMPTY           1
 
 // Maximum number of failed unlock attempts.
-#define PIN_MAX_TRIES 16
+#define PIN_MAX_TRIES       16
 
 // The total number of iterations to use in PBKDF2.
-#define PIN_ITER_COUNT 20000
+#define PIN_ITER_COUNT      20000
 
 // If the top bit of APP is set, then the value is not encrypted.
-#define FLAG_PUBLIC 0x80
+#define FLAG_PUBLIC         0x80
 
 // The length of the PIN entry log or the PIN success log in words.
-#define PIN_LOG_WORDS 16
+#define PIN_LOG_WORDS       16
 
 // The length of a word in bytes.
-#define WORD_SIZE sizeof(uint32_t)
+#define WORD_SIZE           (sizeof(uint32_t))
 
 // The length of the hashed hardware salt in bytes.
-#define HARDWARE_SALT_SIZE SHA256_DIGEST_LENGTH
+#define HARDWARE_SALT_SIZE  SHA256_DIGEST_LENGTH
 
 // The length of the random salt in bytes.
-#define RANDOM_SALT_SIZE 4
+#define RANDOM_SALT_SIZE    4
 
 // The length of the data encryption key in bytes.
-#define DEK_SIZE 32
+#define DEK_SIZE            32
 
 // The length of the PIN verification code in bytes.
-#define PVC_SIZE 8
+#define PVC_SIZE            8
 
 // The length of the Poly1305 MAC in bytes.
-#define POLY1305_MAC_SIZE 16
+#define POLY1305_MAC_SIZE   16
 
 // The length of the ChaCha20 IV (aka nonce) in bytes as per RFC 7539.
-#define CHACHA20_IV_SIZE 12
+#define CHACHA20_IV_SIZE    12
 
 // The length of the ChaCha20 block in bytes.
 #define CHACHA20_BLOCK_SIZE 64
@@ -486,7 +489,7 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
-    if (sectrue != initialized || app == 0) {
+    if (sectrue != initialized || app == APP_PIN) {
         return secfalse;
     }
 
@@ -538,7 +541,7 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
-    if (sectrue != initialized || sectrue != unlocked || app == 0) {
+    if (sectrue != initialized || sectrue != unlocked || app == APP_PIN) {
         return secfalse;
     }
     if ((app & FLAG_PUBLIC) != 0) {
