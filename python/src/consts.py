@@ -1,5 +1,8 @@
+# App ID where PIN log is stored.
+PIN_APP_ID = 0x00
+
 # Norcow storage key of the PIN entry log and PIN success log.
-PIN_LOG_KEY = 0x0001
+PIN_LOG_KEY = (PIN_APP_ID << 8) | 0x01
 
 # Length of word in bytes.
 WORD_SIZE = 4
@@ -16,10 +19,10 @@ LOW_MASK = 0x55555555
 ALL_FF_LOG = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 # Norcow storage key of the combined salt, EDEK and PIN verification code entry.
-EDEK_PVC_KEY = 0x0002
+EDEK_PVC_KEY = (PIN_APP_ID << 8) | 0x02
 
 # Norcow storage key of the PIN set flag.
-PIN_NOT_SET_KEY = 0x0003
+PIN_NOT_SET_KEY = (PIN_APP_ID << 8) | 0x03
 
 TRUE_BYTE = b"\x01"
 
@@ -56,3 +59,6 @@ KEK_SIZE = 32
 
 # The length of KEIV in bytes.
 KEIV_SIZE = 12
+
+# Signalizes free storage.
+NORCOW_KEY_FREE = b"\xFF\xFF"

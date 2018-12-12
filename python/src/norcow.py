@@ -1,6 +1,8 @@
 import sys
 from struct import pack
 
+from . import consts
+
 NORCOW_SECTOR_COUNT = 2
 NORCOW_SECTOR_SIZE = 64 * 1024
 
@@ -32,6 +34,9 @@ class Norcow:
         return value
 
     def set(self, key: int, val: bytes) -> bool:
+        if key == consts.NORCOW_KEY_FREE:
+            raise RuntimeError("Norcow: key 0xFFFF is not allowed")
+
         if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
             self._compact()
         self._erase_old(key)
@@ -84,7 +89,7 @@ class Norcow:
 
     def _read_item(self, offset: int) -> (bytes, bytes):
         key = self.sectors[self.active_sector][offset : offset + 2]
-        if key == b"\xff\xff":
+        if key == consts.NORCOW_KEY_FREE:
             raise ValueError("Norcow: no data on this offset")
         length = self.sectors[self.active_sector][offset + 2 : offset + 4]
         length = int.from_bytes(length, sys.byteorder)

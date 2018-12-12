@@ -94,8 +94,8 @@ class Storage:
 
     def get(self, key: int) -> bytes:
         app = key >> 8
-        if not self.initialized or app == 0:
-            raise RuntimeError("Storage not initialized or APP_ID = 0")
+        if not self.initialized or app == consts.PIN_APP_ID:
+            raise RuntimeError("Storage not initialized or app = 0 (PIN)")
         if not self.unlocked and not (app & consts.FLAG_PUBLIC):
             # public fields can be read from an unlocked device
             raise RuntimeError("Storage locked")
@@ -105,7 +105,7 @@ class Storage:
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
-        if not self.initialized or not self.unlocked or app == 0:
+        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
             raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
         if app & consts.FLAG_PUBLIC:
             return self._set(key, val)
