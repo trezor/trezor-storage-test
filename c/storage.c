@@ -86,8 +86,8 @@ static secbool unlocked = secfalse;
 static PIN_UI_WAIT_CALLBACK ui_callback = NULL;
 static uint8_t cached_dek[DEK_SIZE] = {0};
 static uint8_t hardware_salt[HARDWARE_SALT_SIZE] = {0};
-static const uint8_t TRUE_BYTE = 1;
-static const uint8_t FALSE_BYTE = 0;
+static const uint8_t TRUE_BYTE = 0x01;
+static const uint8_t FALSE_BYTE = 0x00;
 
 static void handle_fault();
 
@@ -161,9 +161,9 @@ static secbool set_pin(uint32_t pin)
     if (ret == sectrue)
     {
         if (pin == PIN_EMPTY) {
-            norcow_set(PIN_NOT_SET_KEY, &TRUE_BYTE, 1);
+            norcow_set(PIN_NOT_SET_KEY, &TRUE_BYTE, sizeof(TRUE_BYTE));
         } else {
-            norcow_set(PIN_NOT_SET_KEY, &FALSE_BYTE, 0);
+            norcow_set(PIN_NOT_SET_KEY, &FALSE_BYTE, sizeof(FALSE_BYTE));
         }
     }
 
