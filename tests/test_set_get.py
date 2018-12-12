@@ -1,5 +1,3 @@
-import pytest
-
 from c.storage import Storage as StorageC
 from python.src.storage import Storage as StoragePy
 
@@ -37,4 +35,3 @@ def test_set_get():
         assert s.get(0x0903) == b"ipsum"
         assert s.get(0xDEAD) == b"AAAAAAAAAAA"
         assert s.get(0x2200) == b"BBBB"
-        # TODO lock and get public?
