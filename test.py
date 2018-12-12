@@ -27,6 +27,9 @@ for s in [sc, sp]:
     s.set(0xbeef, b"hello")
     s.set(0x03fe, b"world!")
     s.set(0xbeef, b"ahojj")
+    for value in test_strings:
+        s.set(0x0301, value)
+        assert s.get(0x0301) == value
     d = s._dump()
     print(d[0][:512].hex())
     h = [hash(x) for x in d]

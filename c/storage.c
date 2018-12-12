@@ -529,8 +529,9 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
     uint8_t mac_computed[POLY1305_MAC_SIZE];
     chacha20poly1305_ctx ctx;
     rfc7539_init(&ctx, cached_dek, iv);
+    rfc7539_auth(&ctx, (const uint8_t*)&key, sizeof(key));
     chacha20poly1305_decrypt(&ctx, ciphertext, (uint8_t*) val_dest, *len);
-    rfc7539_finish(&ctx, 0, *len, mac_computed);
+    rfc7539_finish(&ctx, sizeof(key), *len, mac_computed);
     memzero(&ctx, sizeof(ctx));
     secbool ret = memcmp(mac_computed, mac_stored, POLY1305_MAC_SIZE) == 0 ? sectrue : secfalse;
     memzero(mac_computed, sizeof(mac_computed));
@@ -565,6 +566,7 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
     // Encrypt all blocks except for the last one.
     chacha20poly1305_ctx ctx;
     rfc7539_init(&ctx, cached_dek, buffer);
+    rfc7539_auth(&ctx, (const uint8_t*)&key, sizeof(key));
     size_t i;
     for (i = 0; i + CHACHA20_BLOCK_SIZE < len; i += CHACHA20_BLOCK_SIZE, offset += CHACHA20_BLOCK_SIZE) {
         chacha20poly1305_encrypt(&ctx, ((const uint8_t*) val) + i, buffer, CHACHA20_BLOCK_SIZE);
@@ -577,7 +579,7 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
 
     // Encrypt final block and compute message authentication tag.
     chacha20poly1305_encrypt(&ctx, ((const uint8_t*) val) + i, buffer, len - i);
-    rfc7539_finish(&ctx, 0, len, buffer + len - i);
+    rfc7539_finish(&ctx, sizeof(key), len, buffer + len - i);
     secbool ret = norcow_update_bytes(key, offset, buffer, len - i + POLY1305_MAC_SIZE);
     memzero(&ctx, sizeof(ctx));
     memzero(buffer, sizeof(buffer));
