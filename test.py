@@ -26,7 +26,8 @@ for s in [sc, sp]:
     s.unlock(1)
     s.set(0xbeef, b"hello")
     s.set(0x03fe, b"world!")
-    s.set(0xbeef, b"ahojj")
+    s.set(0xbeef, b"satoshi")
+    s.set(0xbeef, b"Satoshi")
     for value in test_strings:
         s.set(0x0301, value)
         assert s.get(0x0301) == value
