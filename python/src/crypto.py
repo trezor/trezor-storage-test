@@ -24,16 +24,20 @@ def derive_kek_keiv(salt: bytes, pin: int) -> (bytes, bytes):
     return kek, keiv
 
 
-def chacha_poly_encrypt(key: bytes, iv: bytes, data: bytes) -> (bytes, bytes):
+def chacha_poly_encrypt(
+    key: bytes, iv: bytes, data: bytes, additional_data: bytes = None
+) -> (bytes, bytes):
     chacha = ChaCha20Poly1305(key)
-    chacha_output = chacha.encrypt(iv, bytes(data), None)
+    chacha_output = chacha.encrypt(iv, bytes(data), additional_data)
     # cipher text and 128b authentication tag
     return chacha_output[: len(data)], chacha_output[len(data) :]
 
 
-def chacha_poly_decrypt(key: bytes, iv: bytes, data: bytes) -> bytes:
+def chacha_poly_decrypt(
+    key: bytes, app_key: int, iv: bytes, data: bytes, additional_data: bytes = None
+) -> bytes:
     chacha = ChaCha20Poly1305(key)
-    chacha_output = chacha.decrypt(bytes(iv), bytes(data), None)
+    chacha_output = chacha.decrypt(bytes(iv), bytes(data), additional_data)
     return chacha_output
 
 

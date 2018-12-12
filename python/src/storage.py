@@ -1,4 +1,5 @@
 import hashlib
+import sys
 
 from . import consts, crypto, pin_logs, prng
 from .norcow import Norcow
@@ -113,7 +114,9 @@ class Storage:
 
     def _set_encrypt(self, key: int, val: bytes) -> bool:
         iv = prng.random_buffer(consts.CHACHA_IV_SIZE)
-        cipher_text, tag = crypto.chacha_poly_encrypt(self.dek, iv, val)
+        cipher_text, tag = crypto.chacha_poly_encrypt(
+            self.dek, iv, val, key.to_bytes(2, sys.byteorder)
+        )
         return self._set(key, iv + cipher_text + tag)
 
     def _get_decrypt(self, key: int) -> bytes:
@@ -121,7 +124,9 @@ class Storage:
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
         chacha_input = data[consts.CHACHA_IV_SIZE :]
-        return crypto.chacha_poly_decrypt(self.dek, iv, chacha_input)
+        return crypto.chacha_poly_decrypt(
+            self.dek, key, iv, chacha_input, key.to_bytes(2, sys.byteorder)
+        )
 
     def _get(self, key: int) -> bytes:
         return self.nc.get(key)
