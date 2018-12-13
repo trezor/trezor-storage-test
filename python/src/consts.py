@@ -24,7 +24,9 @@ EDEK_PVC_KEY = (PIN_APP_ID << 8) | 0x02
 # Norcow storage key of the PIN set flag.
 PIN_NOT_SET_KEY = (PIN_APP_ID << 8) | 0x03
 
+# Boolean values are stored as a simple 0/1 int.
 TRUE_BYTE = b"\x01"
+FALSE_BYTE = b"\x00"
 
 # The PIN value corresponding to an empty PIN.
 PIN_EMPTY = 1

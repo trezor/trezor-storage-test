@@ -138,7 +138,7 @@ class Storage:
         if val:
             return self.nc.set(key, consts.TRUE_BYTE)
         # False is stored as an empty value
-        return self.nc.set(key, bytes())
+        return self.nc.set(key, consts.FALSE_BYTE)
 
     def _dump(self) -> bytes:
         return self.nc._dump()
