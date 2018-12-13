@@ -42,8 +42,27 @@ class Norcow:
 
         found_value, pos = self._find_item(key)
         if found_value:
-            self._erase_old(pos, found_value)
+            if self._is_updatable(found_value, val):
+                self._write(pos, key, val)
+                return
+            else:
+                self._erase_old(pos, found_value)
         self._append(key, val)
+
+    def _is_updatable(self, old: bytes, new: bytes) -> bool:
+        """
+        Item is updatable if the new value is the same or
+        it changes 1 to 0 only (the flash memory does not
+        allow to flip 0 to 1 unless you wipe it).
+        """
+        if len(old) != len(new):
+            return False
+        if old == new:
+            return True
+        for a, b in zip(old, new):
+            if a & b != b:
+                return False
+        return True
 
     def _erase_old(self, pos: int, value: bytes):
         wiped_data = b"\x00" * len(value)
