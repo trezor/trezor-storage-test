@@ -39,24 +39,15 @@ class Norcow:
 
         if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
             self._compact()
-        self._erase_old(key)
-        data = pack("<HH", key, len(val)) + align4_data(val)
-        self.sectors[self.active_sector][
-            self.active_offset : self.active_offset + len(data)
-        ] = data
-        self.active_offset += len(data)
 
-    def _erase_old(self, key: int):
-        value, pos = self._find_item(key)
-        if value is False:
-            return
-        wiped_data = b"\x00\x00"  # key and app id
-        # length needs to remain
-        wiped_data = wiped_data + len(value).to_bytes(2, sys.byteorder)
-        wiped_data = wiped_data + b"\x00" * (len(value) + align4_int(len(value)))
-        self.sectors[self.active_sector][
-            pos : pos + self._norcow_item_length(value)
-        ] = wiped_data
+        found_value, pos = self._find_item(key)
+        if found_value:
+            self._erase_old(pos, found_value)
+        self._append(key, val)
+
+    def _erase_old(self, pos: int, value: bytes):
+        wiped_data = b"\x00" * len(value)
+        self._write(pos, 0x0000, wiped_data)
 
     def replace(self, key: int, new_value: bytes) -> bool:
         old_value, offset = self._find_item(key)
@@ -64,8 +55,15 @@ class Norcow:
             raise ValueError("Norcow: key not found")
         if len(old_value) != len(new_value):
             raise ValueError("Norcow: replace works only with items of the same length")
+        self._write(offset, key, new_value)
+
+    def _append(self, key: int, value: bytes):
+        self.active_offset += self._write(self.active_offset, key, value)
+
+    def _write(self, pos: int, key: int, new_value: bytes) -> int:
         data = pack("<HH", key, len(new_value)) + align4_data(new_value)
-        self.sectors[self.active_sector][offset : offset + len(data)] = data
+        self.sectors[self.active_sector][pos : pos + len(data)] = data
+        return len(data)
 
     def _find_item(self, key: int) -> (bytes, int):
         offset = len(NORCOW_MAGIC)
