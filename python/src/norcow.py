@@ -21,12 +21,12 @@ class Norcow:
     def init(self):
         self.wipe()
 
-    def wipe(self):
+    def wipe(self, sector: int=0):
         self.sectors = [
             bytearray([0xFF] * NORCOW_SECTOR_SIZE) for _ in range(NORCOW_SECTOR_COUNT)
         ]
-        self.sectors[0][:4] = NORCOW_MAGIC
-        self.active_sector = 0
+        self.sectors[sector][:4] = NORCOW_MAGIC
+        self.active_sector = sector
         self.active_offset = len(NORCOW_MAGIC)
 
     def get(self, key: int) -> bytes:
@@ -37,9 +37,6 @@ class Norcow:
         if key == consts.NORCOW_KEY_FREE:
             raise RuntimeError("Norcow: key 0xFFFF is not allowed")
 
-        if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
-            self._compact()
-
         found_value, pos = self._find_item(key)
         if found_value:
             if self._is_updatable(found_value, val):
@@ -47,6 +44,10 @@ class Norcow:
                 return
             else:
                 self._erase_old(pos, found_value)
+
+        if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
+            self._compact()
+
         self._append(key, val)
 
     def _is_updatable(self, old: bytes, new: bytes) -> bool:
@@ -81,6 +82,8 @@ class Norcow:
 
     def _write(self, pos: int, key: int, new_value: bytes) -> int:
         data = pack("<HH", key, len(new_value)) + align4_data(new_value)
+        if pos + len(data) > NORCOW_SECTOR_SIZE:
+            raise ValueError("Norcow: item too big")
         self.sectors[self.active_sector][pos : pos + len(data)] = data
         return len(data)
 
@@ -117,4 +120,17 @@ class Norcow:
         return [bytes(x) for x in self.sectors]
 
     def _compact(self):
-        raise NotImplementedError
+        offset = len(NORCOW_MAGIC)
+        data = list()
+        while True:
+            try:
+                k, v = self._read_item(offset)
+                if k != 0x00:
+                    data.append((k, v))
+            except ValueError as e:
+                break
+            offset = offset + self._norcow_item_length(v)
+        sector = self.active_sector
+        self.wipe((sector + 1) % NORCOW_SECTOR_COUNT)
+        for key, value in data:
+            self._append(key, value)

@@ -1,11 +1,11 @@
 import pytest
 
 from . import common
-from ..src.norcow import Norcow
+from ..src import norcow
 
 
 def test_norcow_set():
-    n = Norcow()
+    n = norcow.Norcow()
     n.init()
     n.set(0x0001, b"123")
     data = n._dump()[0][:256]
@@ -36,7 +36,7 @@ def test_norcow_set():
 
 
 def test_norcow_read_item():
-    n = Norcow()
+    n = norcow.Norcow()
     n.init()
     n.set(0x0001, b"123")
     n.set(0x0002, b"456")
@@ -54,7 +54,7 @@ def test_norcow_read_item():
 
 
 def test_norcow_get_item():
-    n = Norcow()
+    n = norcow.Norcow()
     n.init()
     n.set(0x0001, b"123")
     n.set(0x0002, b"456")
@@ -88,7 +88,7 @@ def test_norcow_get_item():
 
 
 def test_norcow_replace_item():
-    n = Norcow()
+    n = norcow.Norcow()
     n.init()
     n.set(0x0001, b"123")
     n.set(0x0002, b"456")
@@ -111,3 +111,33 @@ def test_norcow_replace_item():
     with pytest.raises(ValueError) as e:
         n.replace(0x0001, b"00000")
     assert "same length" in str(e)
+
+
+def test_norcow_compact():
+    n = norcow.Norcow()
+    n.init()
+    n.set(0x0101, b"ahoj")
+    n.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 100))
+    n.set(0x0101, b"hello")
+
+    n.set(0x0103, b"123456789x")
+    n.set(0x0104, b"123456789x")
+    n.set(0x0105, b"123456789x")
+    n.set(0x0106, b"123456789x")
+    mem = n._dump()
+    assert mem[0][:4] == norcow.NORCOW_MAGIC
+    assert mem[0][200:300] == b"\x00" * 100
+
+    # compact is triggered
+    n.set(0x0107, b"123456789x")
+    mem = n._dump()
+    # assert the other sector is active
+    assert mem[1][:4] == norcow.NORCOW_MAGIC
+    # assert the deleted item was not copied
+    assert mem[0][200:300] == b"\xff" * 100
+
+    n.set(0x0108, b"123456789x")
+    n.set(0x0109, b"123456789x")
+
+    assert n.get(0x0101) == b"hello"
+    assert n.get(0x0103) == b"123456789x"
