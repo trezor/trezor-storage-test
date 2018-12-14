@@ -33,6 +33,9 @@
 // The key value which is used to indicate that the entry is not set.
 #define NORCOW_KEY_FREE   (0xFFFF)
 
+// The key value which is used to indicate that the entry has been erased.
+#define NORCOW_KEY_ERASED (0x0000)
+
 // The length of the sector header in bytes. The header is preserved between sector erasures.
 #if TREZOR_MODEL == 1
 #define NORCOW_HEADER_LEN (0x100)
@@ -220,6 +223,11 @@ static void compact()
             break;
         }
         offset = pos;
+
+        // skip erased items
+        if (k == NORCOW_KEY_ERASED) {
+            continue;
+        }
 
         // check if not already saved
         const void *v2;
