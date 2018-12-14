@@ -23,9 +23,13 @@
 #include "flash.h"
 #include "common.h"
 
+// NRC2 = 4e524332
+#define NORCOW_MAGIC      ((uint32_t)0x3243524e)
 // NRCW = 4e524357
-#define NORCOW_MAGIC      ((uint32_t)0x5743524e)
+#define NORCOW_MAGIC_V0   ((uint32_t)0x5743524e)
 #define NORCOW_MAGIC_LEN  (sizeof(uint32_t))
+#define NORCOW_VERSION    ((uint32_t)0x00000001)
+#define NORCOW_VERSION_LEN (sizeof(uint32_t))
 
 #define NORCOW_WORD_SIZE  (sizeof(uint32_t))
 #define NORCOW_PREFIX_LEN NORCOW_WORD_SIZE
@@ -43,9 +47,11 @@
 #define NORCOW_HEADER_LEN 0
 #endif
 
+#define NORCOW_STORAGE_START (NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN)
+
 static const uint8_t norcow_sectors[NORCOW_SECTOR_COUNT] = NORCOW_SECTORS;
 static uint8_t norcow_active_sector = 0;
-static uint32_t norcow_active_offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+static uint32_t norcow_active_offset = NORCOW_STORAGE_START;
 
 /*
  * Returns pointer to sector, starting with offset
@@ -117,6 +123,7 @@ static void norcow_erase(uint8_t sector, secbool set_magic)
 
     if (sectrue == set_magic) {
         ensure(norcow_write(sector, NORCOW_HEADER_LEN, NORCOW_MAGIC, NULL, 0), "set magic failed");
+        ensure(norcow_write(sector, NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN, NORCOW_VERSION, NULL, 0), "set version failed");
     }
 }
 
@@ -167,7 +174,7 @@ static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_
 {
     *val = 0;
     *len = 0;
-    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+    uint32_t offset = NORCOW_STORAGE_START;
     for (;;) {
         uint16_t k, l;
         const void *v;
@@ -189,7 +196,7 @@ static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_
  */
 static uint32_t find_free_offset(uint8_t sector)
 {
-    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+    uint32_t offset = NORCOW_STORAGE_START;
     for (;;) {
         uint16_t key, len;
         const void *val;
@@ -210,8 +217,8 @@ static void compact()
     uint8_t norcow_next_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
     norcow_erase(norcow_next_sector, sectrue);
 
-    uint32_t offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
-    uint32_t offsetw = offset;
+    uint32_t offset = NORCOW_STORAGE_START;
+    uint32_t offsetw = NORCOW_STORAGE_START;
 
     for (;;) {
         // read item
@@ -265,26 +272,94 @@ static void compact()
 }
 
 /*
+ * Upgrade the active sector from a previous version.
+ */
+static void norcow_upgrade(uint32_t version) {
+    const uint16_t PIN_KEY_V0      = 0x0000;
+    const uint16_t EDEK_PVC_KEY_V1 = 0x0002;
+
+    uint8_t norcow_next_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
+    norcow_erase(norcow_next_sector, sectrue);
+
+    uint32_t offsetr = NORCOW_STORAGE_START;
+    uint32_t offsetw = NORCOW_STORAGE_START;
+
+    if (version == 0) {
+        offsetr = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+    }
+
+    for (;;) {
+        // Read item.
+        uint16_t key;
+        uint16_t len;
+        const void *val;
+        secbool ret = read_item(norcow_active_sector, offsetr, &key, &val, &len, &offsetr);
+        if (sectrue != ret) {
+            break;
+        }
+
+        // Check whether the item is the latest instance.
+        uint32_t offset = offsetr;
+        for (;;) {
+            uint16_t k;
+            uint16_t l;
+            const void *v;
+            ret = read_item(norcow_active_sector, offset, &k, &v, &l, &offset);
+            if (sectrue != ret || key == k) {
+                break;
+            }
+        }
+        if (sectrue == ret) {
+            // There exists a newer instance.
+            continue;
+        }
+
+        if (version == 0 && key == PIN_KEY_V0) {
+            // Version 0: Move PIN at key 0x0000 to key 0x0002, because 0x0000 is used to indicate erased entry.
+            ensure(write_item(norcow_next_sector, offsetw, EDEK_PVC_KEY_V1, val, len, &offsetw), "upgrade write failed");
+        } else {
+            // Otherwise copy the key-value pair.
+            ensure(write_item(norcow_next_sector, offsetw, key, val, len, &offsetw), "upgrade write failed");
+        }
+    }
+
+    norcow_erase(norcow_active_sector, secfalse);
+    norcow_active_sector = norcow_next_sector;
+    norcow_active_offset = find_free_offset(norcow_active_sector);
+}
+
+/*
  * Initializes storage
  */
 void norcow_init(void)
 {
     flash_init();
     secbool found = secfalse;
+    uint32_t norcow_active_version = UINT32_MAX;
     // detect active sector - starts with magic
     for (uint8_t i = 0; i < NORCOW_SECTOR_COUNT; i++) {
-        const uint32_t *magic = norcow_ptr(i, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN);
-        if (magic != NULL && *magic == NORCOW_MAGIC) {
-            found = sectrue;
-            norcow_active_sector = i;
-            break;
+        const uint32_t *magic = norcow_ptr(i, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN);
+        if (magic != NULL) {
+            if (*magic == NORCOW_MAGIC) {
+                found = sectrue;
+                norcow_active_sector = i;
+                norcow_active_version = magic[1];
+                break;
+            } else if (*magic == NORCOW_MAGIC_V0) {
+                found = sectrue;
+                norcow_active_sector = i;
+                norcow_active_version = 0;
+                break;
+            }
         }
     }
-    // no active sectors found - let's erase
-    if (sectrue == found) {
-        norcow_active_offset = find_free_offset(norcow_active_sector);
-    } else {
+    // If no active sectors found or version downgrade, then erase.
+    if (sectrue != found || norcow_active_version > NORCOW_VERSION) {
         norcow_wipe();
+    } else if (norcow_active_version < NORCOW_VERSION) {
+        norcow_upgrade(norcow_active_version);
+    } else {
+        norcow_active_offset = find_free_offset(norcow_active_sector);
     }
 }
 
@@ -298,7 +373,7 @@ void norcow_wipe(void)
         norcow_erase(i, secfalse);
     }
     norcow_active_sector = 0;
-    norcow_active_offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+    norcow_active_offset = NORCOW_STORAGE_START;
 }
 
 /*
