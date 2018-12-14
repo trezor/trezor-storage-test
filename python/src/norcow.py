@@ -21,7 +21,7 @@ class Norcow:
     def init(self):
         self.wipe()
 
-    def wipe(self, sector: int=0):
+    def wipe(self, sector: int = 0):
         self.sectors = [
             bytearray([0xFF] * NORCOW_SECTOR_SIZE) for _ in range(NORCOW_SECTOR_COUNT)
         ]

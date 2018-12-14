@@ -61,25 +61,37 @@ def test_norcow_get_item():
     n.set(0x0101, b"789")
     value = n.get(0x0001)
     assert value == b"123"
-    assert n._dump()[0][:40].hex() == "4e524357010003003132330002000300343536000101030037383900ffffffffffffffffffffffff"
+    assert (
+        n._dump()[0][:40].hex()
+        == "4e524357010003003132330002000300343536000101030037383900ffffffffffffffffffffffff"
+    )
 
     # replacing item with the same value (update)
     n.set(0x0101, b"789")
     value = n.get(0x0101)
     assert value == b"789"
-    assert n._dump()[0][:40].hex() == "4e524357010003003132330002000300343536000101030037383900ffffffffffffffffffffffff"
+    assert (
+        n._dump()[0][:40].hex()
+        == "4e524357010003003132330002000300343536000101030037383900ffffffffffffffffffffffff"
+    )
 
     # replacing item with value with less 1 bits than before (update)
     n.set(0x0101, b"788")
     value = n.get(0x0101)
     assert value == b"788"
-    assert n._dump()[0][:40].hex() == "4e524357010003003132330002000300343536000101030037383800ffffffffffffffffffffffff"
+    assert (
+        n._dump()[0][:40].hex()
+        == "4e524357010003003132330002000300343536000101030037383800ffffffffffffffffffffffff"
+    )
 
     # replacing item with value with more 1 bits than before (wipe and new entry)
     n.set(0x0101, b"787")
     value = n.get(0x0101)
     assert value == b"787"
-    assert n._dump()[0][:40].hex() == "4e5243570100030031323300020003003435360000000300000000000101030037383700ffffffff"
+    assert (
+        n._dump()[0][:40].hex()
+        == "4e5243570100030031323300020003003435360000000300000000000101030037383700ffffffff"
+    )
 
     n.set(0x0002, b"world")
     n.set(0x0002, b"earth")

@@ -81,22 +81,22 @@ def test_chacha_strings():
 def test_set_similar():
     sc, sp = init()
     for s in (sc, sp):
-        s.set(0xbeef, b"Satoshi")
-        s.set(0xbeef, b"satoshi")
+        s.set(0xBEEF, b"Satoshi")
+        s.set(0xBEEF, b"satoshi")
     assert common.memory_equals(sc, sp)
 
     for s in (sc, sp):
         s.wipe()
-        s.set(0xbeef, b"satoshi")
-        s.set(0xbeef, b"Satoshi")
+        s.set(0xBEEF, b"satoshi")
+        s.set(0xBEEF, b"Satoshi")
     assert common.memory_equals(sc, sp)
 
     for s in (sc, sp):
         s.wipe()
-        s.set(0xbeef, b"satoshi")
-        s.set(0xbeef, b"Satoshi")
-        s.set(0xbeef, b"Satoshi")
-        s.set(0xbeef, b"SatosHi")
-        s.set(0xbeef, b"satoshi")
-        s.set(0xbeef, b"satoshi\x00")
+        s.set(0xBEEF, b"satoshi")
+        s.set(0xBEEF, b"Satoshi")
+        s.set(0xBEEF, b"Satoshi")
+        s.set(0xBEEF, b"SatosHi")
+        s.set(0xBEEF, b"satoshi")
+        s.set(0xBEEF, b"satoshi\x00")
     assert common.memory_equals(sc, sp)
