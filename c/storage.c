@@ -303,7 +303,7 @@ static secbool pin_fails_increase()
 
 static secbool pin_get_fails(uint32_t *ctr)
 {
-    *ctr = 255;
+    *ctr = PIN_MAX_TRIES;
 
     const void *logs = NULL;
     uint16_t len = 0;
@@ -320,12 +320,12 @@ static secbool pin_get_fails(uint32_t *ctr)
         handle_fault();
         return secfalse;
     }
-    uint32_t unused = guard | ~guard_mask;
+    const uint32_t unused = guard | ~guard_mask;
 
     const uint32_t *success_log = ((const uint32_t*)logs) + 1;
     const uint32_t *entry_log = success_log + PIN_LOG_WORDS;
-    int current = -1;
-    size_t i;
+    volatile int current = -1;
+    volatile size_t i;
     for (i = 0; i < PIN_LOG_WORDS; ++i) {
         if ((entry_log[i] & guard_mask) != guard || (success_log[i] & guard_mask) != guard || (entry_log[i] & success_log[i]) != entry_log[i]) {
             handle_fault();
