@@ -1,0 +1,19 @@
+image: python
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+
+before_script:
+  - python --version
+  - pip install pipenv
+  - pipenv --version
+  - pipenv install
+
+style:
+  script:
+    - pipenv run make style
+
+build:
+  script:
+    - pipenv run make build
+    - pipenv run make tests
