@@ -72,9 +72,9 @@ class Norcow:
     def replace(self, key: int, new_value: bytes) -> bool:
         old_value, offset = self._find_item(key)
         if not old_value:
-            raise ValueError("Norcow: key not found")
+            raise RuntimeError("Norcow: key not found")
         if len(old_value) != len(new_value):
-            raise ValueError("Norcow: replace works only with items of the same length")
+            raise RuntimeError("Norcow: replace works only with items of the same length")
         self._write(offset, key, new_value)
 
     def _append(self, key: int, value: bytes):
@@ -83,7 +83,7 @@ class Norcow:
     def _write(self, pos: int, key: int, new_value: bytes) -> int:
         data = pack("<HH", key, len(new_value)) + align4_data(new_value)
         if pos + len(data) > NORCOW_SECTOR_SIZE:
-            raise ValueError("Norcow: item too big")
+            raise RuntimeError("Norcow: item too big")
         self.sectors[self.active_sector][pos : pos + len(data)] = data
         return len(data)
 

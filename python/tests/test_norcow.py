@@ -120,7 +120,7 @@ def test_norcow_replace_item():
     value = n.get(0x0101)
     assert value == b"789"
 
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(RuntimeError) as e:
         n.replace(0x0001, b"00000")
     assert "same length" in str(e)
 
