@@ -49,6 +49,7 @@
 #define PIN_EMPTY           1
 
 // Maximum number of failed unlock attempts.
+// NOTE: The PIN counter logic relies on this constant being less than or equal to 16.
 #define PIN_MAX_TRIES       16
 
 // The total number of iterations to use in PBKDF2.
@@ -56,6 +57,9 @@
 
 // If the top bit of APP is set, then the value is not encrypted.
 #define FLAG_PUBLIC         0x80
+
+// The length of the guard key in words.
+#define GUARD_KEY_WORDS     1
 
 // The length of the PIN entry log or the PIN success log in words.
 #define PIN_LOG_WORDS       16
@@ -94,6 +98,7 @@ static const uint8_t TRUE_BYTE = 0x01;
 static const uint8_t FALSE_BYTE = 0x00;
 
 static void handle_fault();
+static secbool v0_pin_get_fails(uint32_t *ctr);
 
 /*
  *  Generates a delay of random length. Use this to protect sensitive code against fault injection.
@@ -183,11 +188,15 @@ static secbool expand_guard_key(const uint32_t guard_key, uint32_t *guard_mask, 
     return sectrue;
 }
 
-static secbool pin_logs_init()
+static secbool pin_logs_init(uint32_t fails)
 {
+    if (fails >= PIN_MAX_TRIES) {
+        return secfalse;
+    }
+
     // The format of the PIN_LOGS_KEY entry is:
     // guard_key (1 word), pin_success_log (PIN_LOG_WORDS), pin_entry_log (PIN_LOG_WORDS)
-    uint32_t logs[1 + 2*PIN_LOG_WORDS];
+    uint32_t logs[GUARD_KEY_WORDS + 2*PIN_LOG_WORDS];
 
     // TODO Generate guard key so that it satisfies the integrity check.
     random_buffer((uint8_t*)logs, sizeof(uint32_t));
@@ -200,36 +209,51 @@ static secbool pin_logs_init()
     }
 
     uint32_t unused = guard | ~guard_mask;
-    for (size_t i = 1; i < 1 + 2*PIN_LOG_WORDS; ++i) {
-        logs[i] = unused;
+    for (size_t i = 0; i < 2*PIN_LOG_WORDS; ++i) {
+        logs[GUARD_KEY_WORDS + i] = unused;
     }
+
+    // Set the first word of the PIN entry log to indicate the requested number of fails.
+    logs[GUARD_KEY_WORDS + PIN_LOG_WORDS] = ((((uint32_t)0xFFFFFFFF) >> (2*fails)) & ~guard_mask) | guard;
 
     return norcow_set(PIN_LOGS_KEY, logs, sizeof(logs));
 }
 
 static secbool storage_upgrade()
 {
-    const uint16_t PIN_KEY_V0 = 0x0000;
-    const uint16_t PIN_FAIL_KEY_V0 = 0x0001;
+    const uint16_t V0_PIN_KEY = 0x0000;
+    const uint16_t V0_PIN_FAIL_KEY = 0x0001;
     uint16_t key = 0;
     uint16_t len = 0;
     const void *val = NULL;
 
     if (norcow_active_version == 0) {
         random_buffer(cached_dek, DEK_SIZE);
-        if(sectrue != norcow_get(PIN_KEY_V0, &val, &len)) {
+
+        // Set EDEK_PVC_KEY and PIN_NOT_SET_KEY.
+        if(sectrue != norcow_get(V0_PIN_KEY, &val, &len)) {
             return secfalse;
         }
         set_pin(*(const uint32_t*)val);
-        pin_logs_init();
-        // TODO Set PIN fail count to match PIN_FAIL_KEY_V0.
 
+        // Convert PIN failure counter.
+        uint32_t fails = 0;
+        v0_pin_get_fails(&fails);
+        pin_logs_init(fails);
+
+        // Copy the remaining entries (encrypting the private ones).
         uint32_t offset = 0;
         while (sectrue == norcow_get_next(&offset, &key, &val, &len)) {
-            if (key != PIN_KEY_V0 && key != PIN_FAIL_KEY_V0) {
-                storage_set(key, val, len);
+            if (key == V0_PIN_KEY || key == V0_PIN_FAIL_KEY) {
+                continue;
+            }
+
+            if (sectrue != storage_set(key, val, len)) {
+                return secfalse;
             }
         }
+
+        memzero(cached_dek, DEK_SIZE);
     } else {
         return secfalse;
     }
@@ -260,7 +284,7 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint
     if (secfalse == norcow_get(EDEK_PVC_KEY, &val, &len)) {
         random_buffer(cached_dek, DEK_SIZE);
         set_pin(PIN_EMPTY);
-        pin_logs_init();
+        pin_logs_init(0);
     }
     memzero(cached_dek, DEK_SIZE);
 }
@@ -270,7 +294,7 @@ static secbool pin_fails_reset()
     const void *logs = NULL;
     uint16_t len = 0;
 
-    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
+    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(GUARD_KEY_WORDS + 2*PIN_LOG_WORDS)) {
         return secfalse;
     }
 
@@ -282,19 +306,19 @@ static secbool pin_fails_reset()
     }
 
     uint32_t unused = guard | ~guard_mask;
-    const uint32_t *success_log = ((const uint32_t*)logs) + 1;
+    const uint32_t *success_log = ((const uint32_t*)logs) + GUARD_KEY_WORDS;
     const uint32_t *entry_log = success_log + PIN_LOG_WORDS;
     for (size_t i = 0; i < PIN_LOG_WORDS; ++i) {
         if (entry_log[i] == unused) {
             return sectrue;
         }
         if (success_log[i] != guard) {
-            if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + 1), entry_log[i])) {
+            if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + GUARD_KEY_WORDS), entry_log[i])) {
                 return secfalse;
             }
         }
     }
-    return pin_logs_init();
+    return pin_logs_init(0);
 }
 
 static secbool pin_fails_increase()
@@ -303,7 +327,7 @@ static secbool pin_fails_increase()
     uint16_t len = 0;
 
     wait_random();
-    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
+    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(GUARD_KEY_WORDS + 2*PIN_LOG_WORDS)) {
         handle_fault();
         return secfalse;
     }
@@ -316,7 +340,7 @@ static secbool pin_fails_increase()
         return secfalse;
     }
 
-    const uint32_t *entry_log = ((const uint32_t*)logs) + 1 + PIN_LOG_WORDS;
+    const uint32_t *entry_log = ((const uint32_t*)logs) + GUARD_KEY_WORDS + PIN_LOG_WORDS;
     for (size_t i = 0; i < PIN_LOG_WORDS; ++i) {
         wait_random();
         if ((entry_log[i] & guard_mask) != guard) {
@@ -330,7 +354,7 @@ static secbool pin_fails_increase()
             word = (word >> 2) | (word >> 1);
 
             wait_random();
-            if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + 1 + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
+            if (sectrue != norcow_update_word(PIN_LOGS_KEY, sizeof(uint32_t)*(i + GUARD_KEY_WORDS + PIN_LOG_WORDS), (word & ~guard_mask) | guard)) {
                 handle_fault();
                 return secfalse;
             }
@@ -349,7 +373,7 @@ static secbool pin_get_fails(uint32_t *ctr)
     const void *logs = NULL;
     uint16_t len = 0;
     wait_random();
-    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(1 + 2*PIN_LOG_WORDS)) {
+    if (sectrue != norcow_get(PIN_LOGS_KEY, &logs, &len) || len != WORD_SIZE*(GUARD_KEY_WORDS + 2*PIN_LOG_WORDS)) {
         handle_fault();
         return secfalse;
     }
@@ -363,7 +387,7 @@ static secbool pin_get_fails(uint32_t *ctr)
     }
     const uint32_t unused = guard | ~guard_mask;
 
-    const uint32_t *success_log = ((const uint32_t*)logs) + 1;
+    const uint32_t *success_log = ((const uint32_t*)logs) + GUARD_KEY_WORDS;
     const uint32_t *entry_log = success_log + PIN_LOG_WORDS;
     volatile int current = -1;
     volatile size_t i;
@@ -698,4 +722,43 @@ static void handle_fault()
         norcow_wipe();
     }
     for(;;);
+}
+
+static uint32_t hamming_weight(uint32_t value)
+{
+    value = value - ((value >> 1) & 0x55555555);
+    value = (value & 0x33333333) + ((value >> 2) & 0x33333333);
+    value = (value + (value >> 4)) & 0x0F0F0F0F;
+    value = value + (value >> 8);
+    value = value + (value >> 16);
+    return value & 0x3F;
+}
+
+static secbool v0_pin_get_fails(uint32_t *ctr)
+{
+    const uint16_t V0_PIN_FAIL_KEY = 0x0001;
+    // The PIN_FAIL_KEY points to an area of words, initialized to
+    // 0xffffffff (meaning no PIN failures).  The first non-zero word
+    // in this area is the current PIN failure counter.  If  PIN_FAIL_KEY
+    // has no configuration or is empty, the PIN failure counter is 0.
+    // We rely on the fact that flash allows to clear bits and we clear one
+    // bit to indicate PIN failure.  On success, the word is set to 0,
+    // indicating that the next word is the PIN failure counter.
+
+    // Find the current pin failure counter
+    const void *val = NULL;
+    uint16_t len = 0;
+    if (secfalse != norcow_get(V0_PIN_FAIL_KEY, &val, &len)) {
+        for (unsigned int i = 0; i < len / sizeof(uint32_t); i++) {
+            uint32_t word = ((const uint32_t*)val)[i];
+            if (word != 0) {
+                *ctr = hamming_weight(~word);
+                return sectrue;
+            }
+        }
+    }
+
+    // No PIN failures
+    *ctr = 0;
+    return sectrue;
 }
