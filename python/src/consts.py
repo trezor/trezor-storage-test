@@ -77,7 +77,7 @@ NORCOW_SECTOR_COUNT = 2
 NORCOW_SECTOR_SIZE = 64 * 1024
 
 # Magic flags at the beggining of an active sector.
-NORCOW_MAGIC_AND_VERSION = b"NRC2\x01\x00\x00\x00"
+NORCOW_MAGIC_AND_VERSION = b"NRC2\xFE\xFF\xFF\xFF"
 
 # Signalizes free storage.
 NORCOW_KEY_FREE = 0xFFFF

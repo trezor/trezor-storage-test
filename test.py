@@ -23,6 +23,18 @@ uid = b"\x67\xce\x6a\xe8\xf7\x9b\x73\x96\x83\x88\x21\x5e"
 for s in [sc, sp]:
     print(s.__class__)
     s.init(uid)
+    try:
+        s.unlock(3)
+    except Exception:
+        pass
+    try:
+        s.unlock(3)
+    except Exception:
+        pass
+    try:
+        s.unlock(3)
+    except Exception:
+        pass
     s.unlock(1)
     s.set(0xbeef, b"hello")
     s.set(0x03fe, b"world!")

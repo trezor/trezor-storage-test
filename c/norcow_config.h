@@ -26,4 +26,18 @@
 #define NORCOW_SECTOR_SIZE  (64*1024)
 #define NORCOW_SECTORS      {4, 16}
 
+/*
+ * The length of the sector header in bytes. The header is preserved between sector erasures.
+ */
+#if TREZOR_MODEL == 1
+#define NORCOW_HEADER_LEN (0x100)
+#else
+#define NORCOW_HEADER_LEN 0
+#endif
+
+/*
+ * Current storage version.
+ */
+#define NORCOW_VERSION ((uint32_t)0x00000001)
+
 #endif

@@ -30,17 +30,20 @@
 
 #define LOW_MASK            0x55555555
 
-// The APP namespace which is reserved for PIN related values.
-#define APP_PIN             0x00
+// The APP namespace which is reserved for storage related values.
+#define APP_STORAGE         0x00
 
 // Norcow storage key of the PIN entry log and PIN success log.
-#define PIN_LOGS_KEY        ((APP_PIN << 8) | 0x01)
+#define PIN_LOGS_KEY        ((APP_STORAGE << 8) | 0x01)
 
 // Norcow storage key of the combined salt, EDEK and PIN verification code entry.
-#define EDEK_PVC_KEY        ((APP_PIN << 8) | 0x02)
+#define EDEK_PVC_KEY        ((APP_STORAGE << 8) | 0x02)
 
 // Norcow storage key of the PIN set flag.
-#define PIN_NOT_SET_KEY     ((APP_PIN << 8) | 0x03)
+#define PIN_NOT_SET_KEY     ((APP_STORAGE << 8) | 0x03)
+
+// Norcow storage key of the storage version.
+#define VERSION_KEY         ((APP_STORAGE << 8) | 0x04)
 
 // The PIN value corresponding to an empty PIN.
 #define PIN_EMPTY           1
@@ -86,6 +89,7 @@ static secbool unlocked = secfalse;
 static PIN_UI_WAIT_CALLBACK ui_callback = NULL;
 static uint8_t cached_dek[DEK_SIZE] = {0};
 static uint8_t hardware_salt[HARDWARE_SALT_SIZE] = {0};
+static uint32_t norcow_active_version = 0;
 static const uint8_t TRUE_BYTE = 0x01;
 static const uint8_t FALSE_BYTE = 0x00;
 
@@ -203,15 +207,52 @@ static secbool pin_logs_init()
     return norcow_set(PIN_LOGS_KEY, logs, sizeof(logs));
 }
 
+static secbool storage_upgrade()
+{
+    const uint16_t PIN_KEY_V0 = 0x0000;
+    const uint16_t PIN_FAIL_KEY_V0 = 0x0001;
+    uint16_t key = 0;
+    uint16_t len = 0;
+    const void *val = NULL;
+
+    if (norcow_active_version == 0) {
+        random_buffer(cached_dek, DEK_SIZE);
+        if(sectrue != norcow_get(PIN_KEY_V0, &val, &len)) {
+            return secfalse;
+        }
+        set_pin(*(const uint32_t*)val);
+        pin_logs_init();
+        // TODO Set PIN fail count to match PIN_FAIL_KEY_V0.
+
+        uint32_t offset = 0;
+        while (sectrue == norcow_get_next(&offset, &key, &val, &len)) {
+            if (key != PIN_KEY_V0 && key != PIN_FAIL_KEY_V0) {
+                storage_set(key, val, len);
+            }
+        }
+    } else {
+        return secfalse;
+    }
+
+    return norcow_upgrade_finish();
+}
+
 void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint16_t salt_len)
 {
     initialized = secfalse;
     unlocked = secfalse;
-    norcow_init();
+    norcow_init(&norcow_active_version);
     initialized = sectrue;
     ui_callback = callback;
 
     sha256_Raw(salt, salt_len, hardware_salt);
+
+    if (norcow_active_version < NORCOW_VERSION) {
+        if (sectrue != storage_upgrade()) {
+            norcow_wipe();
+            ensure(secfalse, "storage_upgrade");
+        }
+    }
 
     // If there is no EDEK, then generate a random DEK and store it.
     const void *val;
@@ -379,6 +420,7 @@ static secbool pin_get_fails(uint32_t *ctr)
 
 static secbool unlock(uint32_t pin)
 {
+    // TODO check version
     const void *buffer = NULL;
     uint16_t len = 0;
     if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != RANDOM_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
@@ -489,7 +531,7 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
-    if (sectrue != initialized || app == APP_PIN) {
+    if (sectrue != initialized || app == APP_STORAGE) {
         return secfalse;
     }
 
@@ -542,7 +584,7 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
-    if (sectrue != initialized || sectrue != unlocked || app == APP_PIN) {
+    if (sectrue != initialized || sectrue != unlocked || app == APP_STORAGE) {
         return secfalse;
     }
     if ((app & FLAG_PUBLIC) != 0) {

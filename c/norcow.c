@@ -27,12 +27,11 @@
 #define NORCOW_MAGIC      ((uint32_t)0x3243524e)
 // NRCW = 4e524357
 #define NORCOW_MAGIC_V0   ((uint32_t)0x5743524e)
-#define NORCOW_MAGIC_LEN  (sizeof(uint32_t))
-#define NORCOW_VERSION    ((uint32_t)0x00000001)
-#define NORCOW_VERSION_LEN (sizeof(uint32_t))
 
 #define NORCOW_WORD_SIZE  (sizeof(uint32_t))
 #define NORCOW_PREFIX_LEN NORCOW_WORD_SIZE
+#define NORCOW_MAGIC_LEN  NORCOW_WORD_SIZE
+#define NORCOW_VERSION_LEN NORCOW_WORD_SIZE
 
 // The key value which is used to indicate that the entry is not set.
 #define NORCOW_KEY_FREE   (0xFFFF)
@@ -40,18 +39,21 @@
 // The key value which is used to indicate that the entry has been erased.
 #define NORCOW_KEY_ERASED (0x0000)
 
-// The length of the sector header in bytes. The header is preserved between sector erasures.
-#if TREZOR_MODEL == 1
-#define NORCOW_HEADER_LEN (0x100)
-#else
-#define NORCOW_HEADER_LEN 0
-#endif
-
+// The offset from the beginning of the sector where stored items start.
 #define NORCOW_STORAGE_START (NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN)
 
+// Map from sector index to sector number.
 static const uint8_t norcow_sectors[NORCOW_SECTOR_COUNT] = NORCOW_SECTORS;
+
+// The index of the active reading sector and writing sector. These should be equal except when storage version upgrade or compaction is in progress.
 static uint8_t norcow_active_sector = 0;
-static uint32_t norcow_active_offset = NORCOW_STORAGE_START;
+static uint8_t norcow_write_sector = 0;
+
+// The offset of the first free item in the writing sector.
+static uint32_t norcow_free_offset = NORCOW_STORAGE_START;
+
+// The norcow version of the reading sector.
+static uint32_t norcow_active_version = 0;
 
 /*
  * Returns pointer to sector, starting with offset
@@ -123,7 +125,7 @@ static void norcow_erase(uint8_t sector, secbool set_magic)
 
     if (sectrue == set_magic) {
         ensure(norcow_write(sector, NORCOW_HEADER_LEN, NORCOW_MAGIC, NULL, 0), "set magic failed");
-        ensure(norcow_write(sector, NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN, NORCOW_VERSION, NULL, 0), "set version failed");
+        ensure(norcow_write(sector, NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN, ~NORCOW_VERSION, NULL, 0), "set version failed");
     }
 }
 
@@ -214,8 +216,8 @@ static uint32_t find_free_offset(uint8_t sector)
  */
 static void compact()
 {
-    uint8_t norcow_next_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
-    norcow_erase(norcow_next_sector, sectrue);
+    uint8_t norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
+    norcow_erase(norcow_write_sector, sectrue);
 
     uint32_t offset = NORCOW_STORAGE_START;
     uint32_t offsetw = NORCOW_STORAGE_START;
@@ -239,7 +241,7 @@ static void compact()
         // check if not already saved
         const void *v2;
         uint16_t l2;
-        r = find_item(norcow_next_sector, k, &v2, &l2);
+        r = find_item(norcow_write_sector, k, &v2, &l2);
         if (sectrue == r) {
             continue;
         }
@@ -262,105 +264,52 @@ static void compact()
 
         // copy the last item
         uint32_t posw;
-        ensure(write_item(norcow_next_sector, offsetw, k, v, l, &posw), "compaction write failed");
+        ensure(write_item(norcow_write_sector, offsetw, k, v, l, &posw), "compaction write failed");
         offsetw = posw;
     }
 
     norcow_erase(norcow_active_sector, secfalse);
-    norcow_active_sector = norcow_next_sector;
-    norcow_active_offset = find_free_offset(norcow_active_sector);
-}
-
-/*
- * Upgrade the active sector from a previous version.
- */
-static void norcow_upgrade(uint32_t version) {
-    const uint16_t PIN_KEY_V0      = 0x0000;
-    const uint16_t EDEK_PVC_KEY_V1 = 0x0002;
-
-    uint8_t norcow_next_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
-    norcow_erase(norcow_next_sector, sectrue);
-
-    uint32_t offsetr = NORCOW_STORAGE_START;
-    uint32_t offsetw = NORCOW_STORAGE_START;
-
-    if (version == 0) {
-        offsetr = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
-    }
-
-    for (;;) {
-        // Read item.
-        uint16_t key;
-        uint16_t len;
-        const void *val;
-        secbool ret = read_item(norcow_active_sector, offsetr, &key, &val, &len, &offsetr);
-        if (sectrue != ret) {
-            break;
-        }
-
-        // Check whether the item is the latest instance.
-        uint32_t offset = offsetr;
-        for (;;) {
-            uint16_t k;
-            uint16_t l;
-            const void *v;
-            ret = read_item(norcow_active_sector, offset, &k, &v, &l, &offset);
-            if (sectrue != ret || key == k) {
-                break;
-            }
-        }
-        if (sectrue == ret) {
-            // There exists a newer instance.
-            continue;
-        }
-
-        if (version == 0 && key == PIN_KEY_V0) {
-            // Version 0: Move PIN at key 0x0000 to key 0x0002, because 0x0000 is used to indicate erased entry.
-            ensure(write_item(norcow_next_sector, offsetw, EDEK_PVC_KEY_V1, val, len, &offsetw), "upgrade write failed");
-        } else {
-            // Otherwise copy the key-value pair.
-            ensure(write_item(norcow_next_sector, offsetw, key, val, len, &offsetw), "upgrade write failed");
-        }
-    }
-
-    norcow_erase(norcow_active_sector, secfalse);
-    norcow_active_sector = norcow_next_sector;
-    norcow_active_offset = find_free_offset(norcow_active_sector);
+    norcow_active_sector = norcow_write_sector;
+    norcow_free_offset = find_free_offset(norcow_write_sector);
 }
 
 /*
  * Initializes storage
  */
-void norcow_init(void)
+void norcow_init(uint32_t *norcow_version)
 {
     flash_init();
     secbool found = secfalse;
-    uint32_t norcow_active_version = UINT32_MAX;
-    // detect active sector - starts with magic
+    norcow_active_version = UINT32_MAX;
+    // detect active sector - starts with magic and has lowest version
     for (uint8_t i = 0; i < NORCOW_SECTOR_COUNT; i++) {
         const uint32_t *magic = norcow_ptr(i, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN);
         if (magic != NULL) {
-            if (*magic == NORCOW_MAGIC) {
+            if (*magic == NORCOW_MAGIC || ~(magic[1]) < norcow_active_version) {
                 found = sectrue;
                 norcow_active_sector = i;
-                norcow_active_version = magic[1];
-                break;
+                norcow_active_version = ~(magic[1]);
             } else if (*magic == NORCOW_MAGIC_V0) {
                 found = sectrue;
                 norcow_active_sector = i;
                 norcow_active_version = 0;
-                break;
             }
         }
     }
     // If no active sectors found or version downgrade, then erase.
     if (sectrue != found || norcow_active_version > NORCOW_VERSION) {
         norcow_wipe();
+        norcow_active_version = NORCOW_VERSION;
     } else if (norcow_active_version < NORCOW_VERSION) {
-        norcow_upgrade(norcow_active_version);
+        // Prepare write sector for storage upgrade.
+        norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
+        norcow_erase(norcow_write_sector, sectrue);
+        norcow_free_offset = find_free_offset(norcow_write_sector);
     } else {
-        norcow_active_offset = find_free_offset(norcow_active_sector);
+        norcow_write_sector = norcow_active_sector;
+        norcow_free_offset = find_free_offset(norcow_write_sector);
     }
+    *norcow_version = norcow_active_version;
 }
 
 /*
@@ -373,7 +322,8 @@ void norcow_wipe(void)
         norcow_erase(i, secfalse);
     }
     norcow_active_sector = 0;
-    norcow_active_offset = NORCOW_STORAGE_START;
+    norcow_write_sector = 0;
+    norcow_free_offset = NORCOW_STORAGE_START;
 }
 
 /*
@@ -382,6 +332,51 @@ void norcow_wipe(void)
 secbool norcow_get(uint16_t key, const void **val, uint16_t *len)
 {
     return find_item(norcow_active_sector, key, val, len);
+}
+
+/*
+ * Reads the next entry in the storage starting at offset. Returns secfalse if there is none.
+ */
+secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint16_t *len)
+{
+    if (*offset == 0) {
+        if (norcow_active_version == 0) {
+            *offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+        } else {
+            *offset = NORCOW_STORAGE_START;
+        }
+    }
+
+    for (;;) {
+        uint32_t pos = 0;
+        secbool ret = read_item(norcow_active_sector, *offset, key, val, len, &pos);
+        if (sectrue != ret) {
+            return secfalse;
+        }
+        *offset = pos;
+
+        // Skip erased items.
+        if (*key == NORCOW_KEY_ERASED) {
+            continue;
+        }
+
+        // Check whether the item is the latest instance.
+        uint32_t offsetr = *offset;
+        for (;;) {
+            uint16_t k;
+            uint16_t l;
+            const void *v;
+            ret = read_item(norcow_active_sector, offsetr, &k, &v, &l, &offsetr);
+            if (sectrue != ret) {
+                // There is no newer instance of the item.
+                return sectrue;
+            }
+            if (*key == k) {
+                // There exists a newer instance of the item.
+                break;
+            }
+        }
+    }
 }
 
 /*
@@ -396,16 +391,16 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
         return secfalse;
     }
 
-    const uint8_t sector_num = norcow_sectors[norcow_active_sector];
+    const uint8_t sector_num = norcow_sectors[norcow_write_sector];
     secbool ret = secfalse;
     const void *ptr = NULL;
     uint16_t len_old = 0;
-    secbool found = find_item(norcow_active_sector, key, &ptr, &len_old);
+    secbool found = find_item(norcow_write_sector, key, &ptr, &len_old);
 
     // Try to update the entry if it already exists.
     uint32_t offset = 0;
     if (sectrue == found) {
-        offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_active_sector, 0, NORCOW_SECTOR_SIZE);
+        offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_write_sector, 0, NORCOW_SECTOR_SIZE);
         if (val != NULL && len_old == len) {
             ret = sectrue;
             ensure(flash_unlock(), NULL);
@@ -439,14 +434,14 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
             ensure(flash_lock(), NULL);
         }
         // Check whether there is enough free space and compact if full.
-        if (norcow_active_offset + NORCOW_PREFIX_LEN + len > NORCOW_SECTOR_SIZE) {
+        if (norcow_free_offset + NORCOW_PREFIX_LEN + len > NORCOW_SECTOR_SIZE) {
             compact();
         }
         // Write new item.
         uint32_t pos;
-        ret = write_item(norcow_active_sector, norcow_active_offset, key, val, len, &pos);
+        ret = write_item(norcow_write_sector, norcow_free_offset, key, val, len, &pos);
         if (sectrue == ret) {
-            norcow_active_offset = pos;
+            norcow_free_offset = pos;
         }
     }
     return ret;
@@ -460,15 +455,15 @@ secbool norcow_update_word(uint16_t key, uint16_t offset, uint32_t value)
 {
     const void *ptr;
     uint16_t len;
-    if (sectrue != find_item(norcow_active_sector, key, &ptr, &len)) {
+    if (sectrue != find_item(norcow_write_sector, key, &ptr, &len)) {
         return secfalse;
     }
     if ((offset & 3) != 0 || offset >= len) {
         return secfalse;
     }
-    uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_active_sector, 0, NORCOW_SECTOR_SIZE) + offset;
+    uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_write_sector, 0, NORCOW_SECTOR_SIZE) + offset;
     ensure(flash_unlock(), NULL);
-    ensure(flash_write_word(norcow_sectors[norcow_active_sector], sector_offset, value), NULL);
+    ensure(flash_write_word(norcow_sectors[norcow_write_sector], sector_offset, value), NULL);
     ensure(flash_lock(), NULL);
     return sectrue;
 }
@@ -480,18 +475,28 @@ secbool norcow_update_bytes(const uint16_t key, const uint16_t offset, const uin
 {
     const void *ptr;
     uint16_t allocated_len;
-    if (sectrue != find_item(norcow_active_sector, key, &ptr, &allocated_len)) {
+    if (sectrue != find_item(norcow_write_sector, key, &ptr, &allocated_len)) {
         return secfalse;
     }
     if (offset + len > allocated_len) {
         return secfalse;
     }
-    uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_active_sector, 0, NORCOW_SECTOR_SIZE) + offset;
-    uint8_t sector = norcow_sectors[norcow_active_sector];
+    uint32_t sector_offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_write_sector, 0, NORCOW_SECTOR_SIZE) + offset;
+    uint8_t sector = norcow_sectors[norcow_write_sector];
     ensure(flash_unlock(), NULL);
     for (uint16_t i = 0; i < len; i++, sector_offset++) {
         ensure(flash_write_byte(sector, sector_offset, data[i]), NULL);
     }
     ensure(flash_lock(), NULL);
+    return sectrue;
+}
+
+/*
+ * Complete storage version upgrade
+ */
+secbool norcow_upgrade_finish()
+{
+    norcow_erase(norcow_active_sector, secfalse);
+    norcow_active_sector = norcow_write_sector;
     return sectrue;
 }
