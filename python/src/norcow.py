@@ -3,11 +3,6 @@ from struct import pack
 
 from . import consts
 
-NORCOW_SECTOR_COUNT = 2
-NORCOW_SECTOR_SIZE = 64 * 1024
-
-NORCOW_MAGIC = b"NRCW"
-
 
 def align4_int(i: int):
     return (4 - i) % 4
@@ -23,11 +18,12 @@ class Norcow:
 
     def wipe(self, sector: int = 0):
         self.sectors = [
-            bytearray([0xFF] * NORCOW_SECTOR_SIZE) for _ in range(NORCOW_SECTOR_COUNT)
+            bytearray([0xFF] * consts.NORCOW_SECTOR_SIZE)
+            for _ in range(consts.NORCOW_SECTOR_COUNT)
         ]
-        self.sectors[sector][:4] = NORCOW_MAGIC
+        self.sectors[sector][:8] = consts.NORCOW_MAGIC_AND_VERSION
         self.active_sector = sector
-        self.active_offset = len(NORCOW_MAGIC)
+        self.active_offset = len(consts.NORCOW_MAGIC_AND_VERSION)
 
     def get(self, key: int) -> bytes:
         value, _ = self._find_item(key)
@@ -45,7 +41,7 @@ class Norcow:
             else:
                 self._erase_old(pos, found_value)
 
-        if self.active_offset + 4 + len(val) > NORCOW_SECTOR_SIZE:
+        if self.active_offset + 4 + len(val) > consts.NORCOW_SECTOR_SIZE:
             self._compact()
 
         self._append(key, val)
@@ -72,9 +68,11 @@ class Norcow:
     def replace(self, key: int, new_value: bytes) -> bool:
         old_value, offset = self._find_item(key)
         if not old_value:
-            raise ValueError("Norcow: key not found")
+            raise RuntimeError("Norcow: key not found")
         if len(old_value) != len(new_value):
-            raise ValueError("Norcow: replace works only with items of the same length")
+            raise RuntimeError(
+                "Norcow: replace works only with items of the same length"
+            )
         self._write(offset, key, new_value)
 
     def _append(self, key: int, value: bytes):
@@ -82,13 +80,13 @@ class Norcow:
 
     def _write(self, pos: int, key: int, new_value: bytes) -> int:
         data = pack("<HH", key, len(new_value)) + align4_data(new_value)
-        if pos + len(data) > NORCOW_SECTOR_SIZE:
-            raise ValueError("Norcow: item too big")
+        if pos + len(data) > consts.NORCOW_SECTOR_SIZE:
+            raise RuntimeError("Norcow: item too big")
         self.sectors[self.active_sector][pos : pos + len(data)] = data
         return len(data)
 
     def _find_item(self, key: int) -> (bytes, int):
-        offset = len(NORCOW_MAGIC)
+        offset = len(consts.NORCOW_MAGIC_AND_VERSION)
         value = False
         pos = offset
         while True:
@@ -120,7 +118,7 @@ class Norcow:
         return [bytes(x) for x in self.sectors]
 
     def _compact(self):
-        offset = len(NORCOW_MAGIC)
+        offset = len(consts.NORCOW_MAGIC_AND_VERSION)
         data = list()
         while True:
             try:
@@ -131,6 +129,6 @@ class Norcow:
                 break
             offset = offset + self._norcow_item_length(v)
         sector = self.active_sector
-        self.wipe((sector + 1) % NORCOW_SECTOR_COUNT)
+        self.wipe((sector + 1) % consts.NORCOW_SECTOR_COUNT)
         for key, value in data:
             self._append(key, value)

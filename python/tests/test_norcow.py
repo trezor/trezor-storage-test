@@ -1,7 +1,7 @@
 import pytest
 
 from . import common
-from ..src import norcow
+from ..src import consts, norcow
 
 
 def test_norcow_set():
@@ -9,23 +9,23 @@ def test_norcow_set():
     n.init()
     n.set(0x0001, b"123")
     data = n._dump()[0][:256]
-    assert data[:4] == b"NRCW"
-    assert data[4:6] == b"\x01\x00"  # app + key
-    assert data[6:8] == b"\x03\x00"  # length
-    assert data[8:11] == b"123"  # data
-    assert common.all_ff_bytes(data[12:])
+    assert data[:8] == b"NRC2\x01\x00\x00\x00"
+    assert data[8:10] == b"\x01\x00"  # app + key
+    assert data[10:12] == b"\x03\x00"  # length
+    assert data[12:15] == b"123"  # data
+    assert common.all_ff_bytes(data[16:])
 
     n.wipe()
     n.set(0x0901, b"hello")
     data = n._dump()[0][:256]
-    assert data[:4] == b"NRCW"
-    assert data[4:6] == b"\x01\x09"  # app + key
-    assert data[6:8] == b"\x05\x00"  # length
-    assert data[8:13] == b"hello"  # data
-    assert data[13:16] == b"\x00\x00\x00"  # alignment
-    assert common.all_ff_bytes(data[16:])
+    assert data[:8] == b"NRC2\x01\x00\x00\x00"
+    assert data[8:10] == b"\x01\x09"  # app + key
+    assert data[10:12] == b"\x05\x00"  # length
+    assert data[12:17] == b"hello"  # data
+    assert data[17:20] == b"\x00\x00\x00"  # alignment
+    assert common.all_ff_bytes(data[20:])
 
-    offset = 16
+    offset = 20
     n.set(0x0102, b"world!")
     data = n._dump()[0][:256]
     assert data[offset : offset + 2] == b"\x02\x01"  # app + key
@@ -41,15 +41,15 @@ def test_norcow_read_item():
     n.set(0x0001, b"123")
     n.set(0x0002, b"456")
     n.set(0x0101, b"789")
-    key, value = n._read_item(12)
+    key, value = n._read_item(16)
     assert key == 0x0002
     assert value == b"456"
-    key, value = n._read_item(20)
+    key, value = n._read_item(24)
     assert key == 0x0101
     assert value == b"789"
 
     with pytest.raises(ValueError) as e:
-        key, value = n._read_item(200)
+        key, value = n._read_item(204)
     assert "no data" in str(e)
 
 
@@ -63,7 +63,7 @@ def test_norcow_get_item():
     assert value == b"123"
     assert (
         n._dump()[0][:40].hex()
-        == "4e524357010003003132330002000300343536000101030037383900ffffffffffffffffffffffff"
+        == "4e52433201000000010003003132330002000300343536000101030037383900ffffffffffffffff"
     )
 
     # replacing item with the same value (update)
@@ -72,7 +72,7 @@ def test_norcow_get_item():
     assert value == b"789"
     assert (
         n._dump()[0][:40].hex()
-        == "4e524357010003003132330002000300343536000101030037383900ffffffffffffffffffffffff"
+        == "4e52433201000000010003003132330002000300343536000101030037383900ffffffffffffffff"
     )
 
     # replacing item with value with less 1 bits than before (update)
@@ -81,7 +81,7 @@ def test_norcow_get_item():
     assert value == b"788"
     assert (
         n._dump()[0][:40].hex()
-        == "4e524357010003003132330002000300343536000101030037383800ffffffffffffffffffffffff"
+        == "4e52433201000000010003003132330002000300343536000101030037383800ffffffffffffffff"
     )
 
     # replacing item with value with more 1 bits than before (wipe and new entry)
@@ -89,8 +89,8 @@ def test_norcow_get_item():
     value = n.get(0x0101)
     assert value == b"787"
     assert (
-        n._dump()[0][:40].hex()
-        == "4e5243570100030031323300020003003435360000000300000000000101030037383700ffffffff"
+        n._dump()[0][:44].hex()
+        == "4e524332010000000100030031323300020003003435360000000300000000000101030037383700ffffffff"
     )
 
     n.set(0x0002, b"world")
@@ -120,7 +120,7 @@ def test_norcow_replace_item():
     value = n.get(0x0101)
     assert value == b"789"
 
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(RuntimeError) as e:
         n.replace(0x0001, b"00000")
     assert "same length" in str(e)
 
@@ -129,7 +129,7 @@ def test_norcow_compact():
     n = norcow.Norcow()
     n.init()
     n.set(0x0101, b"ahoj")
-    n.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 100))
+    n.set(0x0101, b"a" * (consts.NORCOW_SECTOR_SIZE - 100))
     n.set(0x0101, b"hello")
 
     n.set(0x0103, b"123456789x")
@@ -137,14 +137,14 @@ def test_norcow_compact():
     n.set(0x0105, b"123456789x")
     n.set(0x0106, b"123456789x")
     mem = n._dump()
-    assert mem[0][:4] == norcow.NORCOW_MAGIC
+    assert mem[0][:8] == consts.NORCOW_MAGIC_AND_VERSION
     assert mem[0][200:300] == b"\x00" * 100
 
     # compact is triggered
     n.set(0x0107, b"123456789x")
     mem = n._dump()
     # assert the other sector is active
-    assert mem[1][:4] == norcow.NORCOW_MAGIC
+    assert mem[1][:8] == consts.NORCOW_MAGIC_AND_VERSION
     # assert the deleted item was not copied
     assert mem[0][200:300] == b"\xff" * 100
 
