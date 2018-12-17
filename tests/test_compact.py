@@ -1,3 +1,5 @@
+import pytest
+
 from c.storage import Storage as StorageC
 from python.src import norcow
 from python.src.storage import Storage as StoragePy
@@ -32,11 +34,10 @@ def test_compact():
 
     sc, sp = init()
     for s in (sc, sp):
-        s.set(0xBEEF, b"hello")
         s.set(0xBEEF, b"asdasdasdasd")
         s.set(0xBEEF, b"fsdasdasdasdasdsadasdsadasdasd")
-        s.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 1000))
-        s.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 1000))
-        s.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 1000))
-        s.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 1000))
+        s.set(0x8101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 1000))
+        with pytest.raises(RuntimeError):
+            s.set(0x0101, b"a" * (norcow.NORCOW_SECTOR_SIZE - 100))
+        s.set(0x0101, b"hello")
     assert common.memory_equals(sc, sp)
