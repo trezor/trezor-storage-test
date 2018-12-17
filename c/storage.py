@@ -36,7 +36,7 @@ class Storage:
         s = c.create_string_buffer(val_len.value)
         if sectrue != self.lib.storage_get(c.c_uint16(key), s, val_len, c.byref(val_len)):
             raise RuntimeError("Failed to get value from storage.")
-        return s.value
+        return s.raw
 
     def set(self, key: int, val: bytes) -> None:
         if sectrue != self.lib.storage_set(c.c_uint16(key), val, c.c_uint16(len(val))):
