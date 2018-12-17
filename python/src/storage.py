@@ -115,7 +115,9 @@ class Storage:
     def _set_encrypt(self, key: int, val: bytes) -> bool:
         # In C data are preallocated beforehand for encrypted values,
         # to match the behaviour we do the same.
-        preallocate = b"\x00" * (consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE)
+        preallocate = b"\x00" * (
+            consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE
+        )
         self._set(key, preallocate)
         iv = prng.random_buffer(consts.CHACHA_IV_SIZE)
         cipher_text, tag = crypto.chacha_poly_encrypt(
