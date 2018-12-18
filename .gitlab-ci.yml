@@ -16,4 +16,7 @@ style:
 build:
   script:
     - pipenv run make build
+
+test:
+  script:
     - pipenv run make tests
