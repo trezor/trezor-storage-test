@@ -95,7 +95,7 @@ class Norcow:
                 if k == key:
                     value = v
                     pos = offset
-            except ValueError as e:
+            except ValueError:
                 break
             offset = offset + self._norcow_item_length(v)
         return value, pos
@@ -125,7 +125,7 @@ class Norcow:
                 k, v = self._read_item(offset)
                 if k != 0x00:
                     data.append((k, v))
-            except ValueError as e:
+            except ValueError:
                 break
             offset = offset + self._norcow_item_length(v)
         sector = self.active_sector

@@ -10,7 +10,7 @@ tests:
 ## style commands:
 style: ## run code style check on application sources and tests
 	flake8 python/ tests/
-	isort --check-only
+	isort --check-only --recursive python/ tests/
 	black python/ tests/ --check
 
 isort:
