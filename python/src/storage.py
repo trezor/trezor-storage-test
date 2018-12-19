@@ -28,7 +28,7 @@ class Storage:
         self._set_pin(consts.PIN_EMPTY)
 
         guard_key = prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
-        self._set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
+        self.nc.set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
 
     def _set_pin(self, pin: int):
         random_salt = prng.random_buffer(consts.PIN_SALT_SIZE)
@@ -40,7 +40,7 @@ class Storage:
         # Pin Verification Code
         pvc = tag[: consts.PVC_SIZE]
 
-        self._set(consts.EDEK_PVC_KEY, random_salt + edek + pvc)
+        self.nc.set(consts.EDEK_PVC_KEY, random_salt + edek + pvc)
         if pin == consts.PIN_EMPTY:
             self._set_bool(consts.PIN_NOT_SET_KEY, True)
         else:
@@ -50,7 +50,7 @@ class Storage:
         self.nc.wipe()
 
     def check_pin(self, pin: int) -> bool:
-        pin_log = self._get(consts.PIN_LOG_KEY)
+        pin_log = self.nc.get(consts.PIN_LOG_KEY)
         guard_key = pin_log[: consts.PIN_LOG_GUARD_KEY_SIZE]
         guard_mask, guard = pin_logs.derive_guard_mask_and_value(guard_key)
         pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
@@ -83,7 +83,7 @@ class Storage:
             raise RuntimeError("Failed to unlock storage.")
 
     def has_pin(self) -> bool:
-        val = self._get(consts.PIN_NOT_SET_KEY)
+        val = self.nc.get(consts.PIN_NOT_SET_KEY)
         return val != consts.TRUE_BYTE
 
     def change_pin(self, oldpin: int, newpin: int) -> None:
@@ -101,32 +101,9 @@ class Storage:
             # public fields can be read from an unlocked device
             raise RuntimeError("Storage locked")
         if app & consts.FLAG_PUBLIC:
-            return self._get(key)
-        return self._get_decrypt(key)
+            return self.nc.get(key)
 
-    def set(self, key: int, val: bytes) -> bool:
-        app = key >> 8
-        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
-            raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
-        if app & consts.FLAG_PUBLIC:
-            return self._set(key, val)
-        return self._set_encrypt(key, val)
-
-    def _set_encrypt(self, key: int, val: bytes) -> bool:
-        # In C data are preallocated beforehand for encrypted values,
-        # to match the behaviour we do the same.
-        preallocate = b"\x00" * (
-            consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE
-        )
-        self._set(key, preallocate)
-        iv = prng.random_buffer(consts.CHACHA_IV_SIZE)
-        cipher_text, tag = crypto.chacha_poly_encrypt(
-            self.dek, iv, val, key.to_bytes(2, sys.byteorder)
-        )
-        return self.nc.replace(key, iv + cipher_text + tag)
-
-    def _get_decrypt(self, key: int) -> bytes:
-        data = self._get(key)
+        data = self.nc.get(key)
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
         chacha_input = data[consts.CHACHA_IV_SIZE :]
@@ -134,11 +111,24 @@ class Storage:
             self.dek, key, iv, chacha_input, key.to_bytes(2, sys.byteorder)
         )
 
-    def _get(self, key: int) -> bytes:
-        return self.nc.get(key)
+    def set(self, key: int, val: bytes) -> bool:
+        app = key >> 8
+        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
+            raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
+        if app & consts.FLAG_PUBLIC:
+            return self.nc.set(key, val)
 
-    def _set(self, key: int, val: bytes) -> bool:
-        return self.nc.set(key, val)
+        # In C data are preallocated beforehand for encrypted values,
+        # to match the behaviour we do the same.
+        preallocate = b"\x00" * (
+            consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE
+        )
+        self.nc.set(key, preallocate)
+        iv = prng.random_buffer(consts.CHACHA_IV_SIZE)
+        cipher_text, tag = crypto.chacha_poly_encrypt(
+            self.dek, iv, val, key.to_bytes(2, sys.byteorder)
+        )
+        return self.nc.replace(key, iv + cipher_text + tag)
 
     def _set_bool(self, key: int, val: bool) -> bool:
         if val:
