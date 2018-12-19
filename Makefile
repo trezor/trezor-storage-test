@@ -3,6 +3,10 @@
 build:
 	$(MAKE) -C c
 
+## submodules:
+vendor:
+	git submodule update --init --recursive --force
+
 ## tests commands:
 tests:
 	pytest --ignore=vendor
