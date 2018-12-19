@@ -3,9 +3,9 @@ from ..src import prng
 
 def test_prng():
     buf = prng.random_buffer(4)
-    assert buf == b"\x2c\xdf\x7e\x39"
+    assert buf == b"\x5f\xf3\x6e\x3c"
     buf = prng.random_buffer(4)
-    assert buf == b"\x18\xfb\x8a\xf5"
+    assert buf == b"\x32\x29\x50\x47"
 
     buf = prng.random_buffer(8)
-    assert buf == b"\xc4\xd7\x56\x71\x30\x73\xe2\xad"
+    assert buf == b"\xe9\xf6\xcc\xd1\x34\x53\xf9\xaa"
