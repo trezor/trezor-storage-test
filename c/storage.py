@@ -8,6 +8,9 @@ fname = os.path.join(os.path.dirname(__file__), "libtrezor-storage.so")
 class Storage:
     def __init__(self) -> None:
         self.lib = c.cdll.LoadLibrary(fname)
+        self.flash_size = c.cast(self.lib.FLASH_SIZE, c.POINTER(c.c_uint32))[0]
+        self.flash_buffer = c.create_string_buffer(self.flash_size)
+        c.cast(self.lib.FLASH_BUFFER, c.POINTER(c.c_void_p))[0] = c.addressof(self.flash_buffer)
 
     def init(self, salt: bytes) -> None:
         self.lib.storage_init(0, salt, c.c_uint16(len(salt)))
@@ -43,8 +46,5 @@ class Storage:
             raise RuntimeError("Failed to set value in storage.")
 
     def _dump(self) -> bytes:
-        size = c.cast(self.lib.FLASH_SIZE, c.POINTER(c.c_uint32)).contents.value
-        addr = c.cast(self.lib.FLASH_BUFFER, c.POINTER(c.c_void_p)).contents.value
-        flash_buffer = c.string_at(addr, size=size)
         # return just sectors 4 and 16 of the whole flash
-        return [flash_buffer[0x010000:0x010000 + 0x10000], flash_buffer[0x110000:0x110000 + 0x10000]]
+        return [self.flash_buffer[0x010000:0x010000 + 0x10000], self.flash_buffer[0x110000:0x110000 + 0x10000]]
