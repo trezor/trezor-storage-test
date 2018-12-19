@@ -216,7 +216,7 @@ static uint32_t find_free_offset(uint8_t sector)
  */
 static void compact()
 {
-    uint8_t norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
+    norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
     norcow_erase(norcow_write_sector, sectrue);
 
     uint32_t offset = NORCOW_STORAGE_START;
