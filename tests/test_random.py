@@ -29,3 +29,4 @@ def test_set_get(app, key, data):
     for s in (sc, sp):
         s.set(app_key, data)
         assert s.get(app_key) == data
+    assert sc._dump() == sp._dump()
