@@ -258,7 +258,19 @@ static secbool storage_upgrade()
         return secfalse;
     }
 
+    norcow_active_version = NORCOW_VERSION;
     return norcow_upgrade_finish();
+}
+
+/*
+ * Initializes the values of EDEK_PVC_KEY, PIN_NOT_SET_KEY and PIN_LOGS_KEY using an empty PIN.
+ */
+static void edek_pin_init()
+{
+    random_buffer(cached_dek, DEK_SIZE);
+    set_pin(PIN_EMPTY);
+    pin_logs_init(0);
+    memzero(cached_dek, DEK_SIZE);
 }
 
 void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint16_t salt_len)
@@ -273,7 +285,7 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint
 
     if (norcow_active_version < NORCOW_VERSION) {
         if (sectrue != storage_upgrade()) {
-            norcow_wipe();
+            storage_wipe();
             ensure(secfalse, "storage_upgrade");
         }
     }
@@ -282,9 +294,7 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint
     const void *val;
     uint16_t len;
     if (secfalse == norcow_get(EDEK_PVC_KEY, &val, &len)) {
-        random_buffer(cached_dek, DEK_SIZE);
-        set_pin(PIN_EMPTY);
-        pin_logs_init(0);
+        edek_pin_init();
     }
     memzero(cached_dek, DEK_SIZE);
 }
@@ -492,8 +502,9 @@ secbool storage_unlock(uint32_t pin)
     // Wipe storage if too many failures
     wait_random();
     if (ctr >= PIN_MAX_TRIES) {
-        norcow_wipe();
+        storage_wipe();
         ensure(secfalse, "pin_fails_check_max");
+        return secfalse;
     }
 
     // Sleep for 2^(ctr-1) seconds before checking the PIN.
@@ -536,7 +547,7 @@ secbool storage_unlock(uint32_t pin)
         // Wipe storage if too many failures
         wait_random();
         if (ctr + 1 >= PIN_MAX_TRIES) {
-            norcow_wipe();
+            storage_wipe();
             ensure(secfalse, "pin_fails_check_max");
         }
         return secfalse;
@@ -692,6 +703,8 @@ secbool storage_change_pin(uint32_t oldpin, uint32_t newpin)
 void storage_wipe(void)
 {
     norcow_wipe();
+    norcow_active_version = NORCOW_VERSION;
+    edek_pin_init();
 }
 
 static void handle_fault()
@@ -700,7 +713,7 @@ static void handle_fault()
 
     // If fault handling is already in progress, then we are probably facing a fault injection attack, so wipe.
     if (secfalse != in_progress) {
-        norcow_wipe();
+        storage_wipe();
         for(;;);
     }
 
@@ -708,18 +721,18 @@ static void handle_fault()
     in_progress = sectrue;
     uint32_t ctr;
     if (sectrue != pin_get_fails(&ctr)) {
-        norcow_wipe();
+        storage_wipe();
         for(;;);
     }
 
     if (sectrue != pin_fails_increase()) {
-        norcow_wipe();
+        storage_wipe();
         for(;;);
     }
 
     uint32_t ctr_new;
     if (sectrue != pin_get_fails(&ctr_new) || ctr + 1 != ctr_new) {
-        norcow_wipe();
+        storage_wipe();
     }
     for(;;);
 }

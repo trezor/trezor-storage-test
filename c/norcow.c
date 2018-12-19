@@ -322,6 +322,7 @@ void norcow_wipe(void)
     for (uint8_t i = 1; i < NORCOW_SECTOR_COUNT; i++) {
         norcow_erase(i, secfalse);
     }
+    norcow_active_version = NORCOW_VERSION;
     norcow_active_sector = 0;
     norcow_write_sector = 0;
     norcow_free_offset = NORCOW_STORAGE_START;
@@ -499,5 +500,6 @@ secbool norcow_upgrade_finish()
 {
     norcow_erase(norcow_active_sector, secfalse);
     norcow_active_sector = norcow_write_sector;
+    norcow_active_version = NORCOW_VERSION;
     return sectrue;
 }
