@@ -1,6 +1,6 @@
 import hypothesis.strategies as st
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, given, settings
 
 from c.storage import Storage as StorageC
 from python.src.storage import Storage as StoragePy
@@ -18,6 +18,7 @@ def init() -> (StorageC, StoragePy):
 
 
 @pytest.mark.hypothesis
+@settings(deadline=250)
 @given(
     st.integers(1, 0xFF), st.integers(0, 0xFF), st.binary(min_size=0, max_size=10000)
 )
