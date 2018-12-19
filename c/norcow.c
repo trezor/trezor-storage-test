@@ -285,7 +285,7 @@ void norcow_init(uint32_t *norcow_version)
     for (uint8_t i = 0; i < NORCOW_SECTOR_COUNT; i++) {
         const uint32_t *magic = norcow_ptr(i, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN);
         if (magic != NULL) {
-            if (*magic == NORCOW_MAGIC || ~(magic[1]) < norcow_active_version) {
+            if (*magic == NORCOW_MAGIC && ~(magic[1]) < norcow_active_version) {
                 found = sectrue;
                 norcow_active_sector = i;
                 norcow_active_version = ~(magic[1]);
@@ -296,6 +296,7 @@ void norcow_init(uint32_t *norcow_version)
             }
         }
     }
+
     // If no active sectors found or version downgrade, then erase.
     if (sectrue != found || norcow_active_version > NORCOW_VERSION) {
         norcow_wipe();
