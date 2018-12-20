@@ -50,10 +50,7 @@ static uint8_t norcow_active_sector = 0;
 static uint8_t norcow_write_sector = 0;
 
 // The offset of the first free item in the writing sector.
-static uint32_t norcow_free_offset = NORCOW_STORAGE_START;
-
-// The norcow version of the reading sector.
-static uint32_t norcow_active_version = 0;
+static uint32_t norcow_free_offset = 0;
 
 /*
  * Returns pointer to sector, starting with offset
@@ -170,13 +167,42 @@ static secbool write_item(uint8_t sector, uint32_t offset, uint16_t key, const v
 }
 
 /*
+ * Finds the offset from the beginning of the sector where stored items start.
+ */
+static secbool find_start_offset(uint8_t sector, uint32_t *offset, uint32_t *version)
+{
+    const uint32_t *magic = norcow_ptr(sector, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN);
+    if (magic == NULL) {
+        return secfalse;
+    }
+
+    if (*magic == NORCOW_MAGIC) {
+        *offset = NORCOW_STORAGE_START;
+        *version = ~(magic[1]);
+    } else if (*magic == NORCOW_MAGIC_V0) {
+        *offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
+        *version = 0;
+    } else {
+        return secfalse;
+    }
+
+    return sectrue;
+}
+
+/*
  * Finds item in given sector
  */
 static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_t *len)
 {
     *val = 0;
     *len = 0;
-    uint32_t offset = NORCOW_STORAGE_START;
+
+    uint32_t offset;
+    uint32_t version;
+    if (sectrue != find_start_offset(sector, &offset, &version)) {
+        return secfalse;
+    }
+
     for (;;) {
         uint16_t k, l;
         const void *v;
@@ -198,7 +224,12 @@ static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_
  */
 static uint32_t find_free_offset(uint8_t sector)
 {
-    uint32_t offset = NORCOW_STORAGE_START;
+    uint32_t offset;
+    uint32_t version;
+    if (sectrue != find_start_offset(sector, &offset, &version)) {
+        return secfalse;
+    }
+
     for (;;) {
         uint16_t key, len;
         const void *val;
@@ -216,10 +247,14 @@ static uint32_t find_free_offset(uint8_t sector)
  */
 static void compact()
 {
+    uint32_t offset;
+    uint32_t version;
+    if (sectrue != find_start_offset(norcow_active_sector, &offset, &version)) {
+        return;
+    }
+
     norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
     norcow_erase(norcow_write_sector, sectrue);
-
-    uint32_t offset = NORCOW_STORAGE_START;
     uint32_t offsetw = NORCOW_STORAGE_START;
 
     for (;;) {
@@ -280,28 +315,23 @@ void norcow_init(uint32_t *norcow_version)
 {
     flash_init();
     secbool found = secfalse;
-    norcow_active_version = UINT32_MAX;
-    // detect active sector - starts with magic and has lowest version
+    *norcow_version = 0;
+    // detect active sector - starts with magic and has highest version
     for (uint8_t i = 0; i < NORCOW_SECTOR_COUNT; i++) {
-        const uint32_t *magic = norcow_ptr(i, NORCOW_HEADER_LEN, NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN);
-        if (magic != NULL) {
-            if (*magic == NORCOW_MAGIC && ~(magic[1]) < norcow_active_version) {
-                found = sectrue;
-                norcow_active_sector = i;
-                norcow_active_version = ~(magic[1]);
-            } else if (*magic == NORCOW_MAGIC_V0) {
-                found = sectrue;
-                norcow_active_sector = i;
-                norcow_active_version = 0;
-            }
+        uint32_t offset;
+        uint32_t version;
+        if (sectrue == find_start_offset(i, &offset, &version) && version >= *norcow_version) {
+            found = sectrue;
+            norcow_active_sector = i;
+            *norcow_version = version;
         }
     }
 
     // If no active sectors found or version downgrade, then erase.
-    if (sectrue != found || norcow_active_version > NORCOW_VERSION) {
+    if (sectrue != found || *norcow_version > NORCOW_VERSION) {
         norcow_wipe();
-        norcow_active_version = NORCOW_VERSION;
-    } else if (norcow_active_version < NORCOW_VERSION) {
+        *norcow_version = NORCOW_VERSION;
+    } else if (*norcow_version < NORCOW_VERSION) {
         // Prepare write sector for storage upgrade.
         norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
         norcow_erase(norcow_write_sector, sectrue);
@@ -310,7 +340,6 @@ void norcow_init(uint32_t *norcow_version)
         norcow_write_sector = norcow_active_sector;
         norcow_free_offset = find_free_offset(norcow_write_sector);
     }
-    *norcow_version = norcow_active_version;
 }
 
 /*
@@ -322,7 +351,6 @@ void norcow_wipe(void)
     for (uint8_t i = 1; i < NORCOW_SECTOR_COUNT; i++) {
         norcow_erase(i, secfalse);
     }
-    norcow_active_version = NORCOW_VERSION;
     norcow_active_sector = 0;
     norcow_write_sector = 0;
     norcow_free_offset = NORCOW_STORAGE_START;
@@ -342,10 +370,9 @@ secbool norcow_get(uint16_t key, const void **val, uint16_t *len)
 secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint16_t *len)
 {
     if (*offset == 0) {
-        if (norcow_active_version == 0) {
-            *offset = NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN;
-        } else {
-            *offset = NORCOW_STORAGE_START;
+        uint32_t version;
+        if (sectrue != find_start_offset(norcow_active_sector, offset, &version)) {
+            return secfalse;
         }
     }
 
@@ -353,7 +380,7 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
         uint32_t pos = 0;
         secbool ret = read_item(norcow_active_sector, *offset, key, val, len, &pos);
         if (sectrue != ret) {
-            return secfalse;
+            break;
         }
         *offset = pos;
 
@@ -379,6 +406,7 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
             }
         }
     }
+    return secfalse;
 }
 
 /*
@@ -500,6 +528,5 @@ secbool norcow_upgrade_finish()
 {
     norcow_erase(norcow_active_sector, secfalse);
     norcow_active_sector = norcow_write_sector;
-    norcow_active_version = NORCOW_VERSION;
     return sectrue;
 }

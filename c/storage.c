@@ -98,7 +98,7 @@ static const uint8_t TRUE_BYTE = 0x01;
 static const uint8_t FALSE_BYTE = 0x00;
 
 static void handle_fault();
-static secbool v0_pin_get_fails(uint32_t *ctr);
+static secbool storage_upgrade();
 
 /*
  *  Generates a delay of random length. Use this to protect sensitive code against fault injection.
@@ -219,49 +219,6 @@ static secbool pin_logs_init(uint32_t fails)
     return norcow_set(PIN_LOGS_KEY, logs, sizeof(logs));
 }
 
-static secbool storage_upgrade()
-{
-    const uint16_t V0_PIN_KEY = 0x0000;
-    const uint16_t V0_PIN_FAIL_KEY = 0x0001;
-    uint16_t key = 0;
-    uint16_t len = 0;
-    const void *val = NULL;
-
-    if (norcow_active_version == 0) {
-        random_buffer(cached_dek, DEK_SIZE);
-
-        // Set EDEK_PVC_KEY and PIN_NOT_SET_KEY.
-        if(sectrue != norcow_get(V0_PIN_KEY, &val, &len)) {
-            return secfalse;
-        }
-        set_pin(*(const uint32_t*)val);
-
-        // Convert PIN failure counter.
-        uint32_t fails = 0;
-        v0_pin_get_fails(&fails);
-        pin_logs_init(fails);
-
-        // Copy the remaining entries (encrypting the private ones).
-        uint32_t offset = 0;
-        while (sectrue == norcow_get_next(&offset, &key, &val, &len)) {
-            if (key == V0_PIN_KEY || key == V0_PIN_FAIL_KEY) {
-                continue;
-            }
-
-            if (sectrue != storage_set(key, val, len)) {
-                return secfalse;
-            }
-        }
-
-        memzero(cached_dek, DEK_SIZE);
-    } else {
-        return secfalse;
-    }
-
-    norcow_active_version = NORCOW_VERSION;
-    return norcow_upgrade_finish();
-}
-
 /*
  * Initializes the values of EDEK_PVC_KEY, PIN_NOT_SET_KEY and PIN_LOGS_KEY using an empty PIN.
  */
@@ -376,6 +333,16 @@ static secbool pin_fails_increase()
     return secfalse;
 }
 
+static uint32_t hamming_weight(uint32_t value)
+{
+    value = value - ((value >> 1) & 0x55555555);
+    value = (value & 0x33333333) + ((value >> 2) & 0x33333333);
+    value = (value + (value >> 4)) & 0x0F0F0F0F;
+    value = value + (value >> 8);
+    value = value + (value >> 16);
+    return value & 0x3F;
+}
+
 static secbool pin_get_fails(uint32_t *ctr)
 {
     *ctr = PIN_MAX_TRIES;
@@ -441,14 +408,7 @@ static secbool pin_get_fails(uint32_t *ctr)
 
     // Count the number of set bits in the two current words of the success log.
     wait_random();
-    uint32_t fails = success_log[current-1] ^ entry_log[current-1];
-    fails = fails - ((fails >> 1) & LOW_MASK);
-    uint32_t fails2 = success_log[current] ^ entry_log[current];
-    fails2 = fails2 - ((fails2 >> 1) & LOW_MASK);
-    fails = (fails & 0x33333333) + ((fails >> 2) & 0x33333333) + (fails2 & 0x33333333) + ((fails2 >> 2) & 0x33333333);
-    fails = (fails & 0x0F0F0F0F) + ((fails >> 4) & 0x0F0F0F0F);
-    fails = fails + (fails >> 8);
-    *ctr = (fails + (fails >> 16)) & 0xFF;
+    *ctr = hamming_weight(success_log[current-1] ^ entry_log[current-1]) + hamming_weight(success_log[current] ^ entry_log[current]);
     return sectrue;
 }
 
@@ -560,42 +520,23 @@ secbool storage_unlock(uint32_t pin)
 }
 
 /*
- * Finds the data stored under key and writes its length to len. If val_dest is not NULL and max_len >= len, then the data is copied to val_dest.
+ * Finds the encrypted data stored under key and writes its length to len.
+ * If val_dest is not NULL and max_len >= len, then the data is decrypted
+ * to val_dest using cached_dek as the decryption key.
  */
-secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, uint16_t *len)
+static secbool storage_get_encrypted(const uint16_t key, void *val_dest, const uint16_t max_len, uint16_t *len)
 {
-    const uint8_t app = key >> 8;
-    // APP == 0 is reserved for PIN related values
-    if (sectrue != initialized || app == APP_STORAGE) {
-        return secfalse;
-    }
-
-    // If the top bit of APP is set, then the value is not encrypted and can be read from an unlocked device.
     const void *val_stored = NULL;
-    if ((app & FLAG_PUBLIC) != 0) {
-        if (sectrue != norcow_get(key, &val_stored, len)) {
-            return secfalse;
-        }
-        if (val_dest == NULL) {
-            return sectrue;
-        }
-        if (*len > max_len) {
-            return secfalse;
-        }
-        memcpy(val_dest, val_stored, *len);
-        return sectrue;
-    }
 
-    if (sectrue != unlocked) {
-        return secfalse;
-    }
     if (sectrue != norcow_get(key, &val_stored, len) || *len < CHACHA20_IV_SIZE + POLY1305_MAC_SIZE) {
         return secfalse;
     }
     *len -= CHACHA20_IV_SIZE + POLY1305_MAC_SIZE;
+
     if (val_dest == NULL) {
         return sectrue;
     }
+
     if (*len > max_len) {
         return secfalse;
     }
@@ -610,23 +551,61 @@ secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, 
     chacha20poly1305_decrypt(&ctx, ciphertext, (uint8_t*) val_dest, *len);
     rfc7539_finish(&ctx, sizeof(key), *len, mac_computed);
     memzero(&ctx, sizeof(ctx));
-    secbool ret = memcmp(mac_computed, mac_stored, POLY1305_MAC_SIZE) == 0 ? sectrue : secfalse;
+
+    // Verify MAC.
+    if (memcmp(mac_computed, mac_stored, POLY1305_MAC_SIZE) != 0) {
+        memzero(val_dest, max_len);
+        memzero(mac_computed, sizeof(mac_computed));
+        return secfalse;
+    }
+
     memzero(mac_computed, sizeof(mac_computed));
-    return ret;
+    return sectrue;
 }
 
-secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
+/*
+ * Finds the data stored under key and writes its length to len. If val_dest is
+ * not NULL and max_len >= len, then the data is copied to val_dest.
+ */
+secbool storage_get(const uint16_t key, void *val_dest, const uint16_t max_len, uint16_t *len)
 {
     const uint8_t app = key >> 8;
     // APP == 0 is reserved for PIN related values
-    if (sectrue != initialized || sectrue != unlocked || app == APP_STORAGE) {
+    if (sectrue != initialized || app == APP_STORAGE) {
         return secfalse;
     }
+
+    // If the top bit of APP is set, then the value is not encrypted and can be read from an unlocked device.
+    secbool ret = secfalse;
     if ((app & FLAG_PUBLIC) != 0) {
-        return norcow_set(key, val, len);
+        const void *val_stored = NULL;
+        if (sectrue != norcow_get(key, &val_stored, len)) {
+            return secfalse;
+        }
+        if (val_dest == NULL) {
+            return sectrue;
+        }
+        if (*len > max_len) {
+            return secfalse;
+        }
+        memcpy(val_dest, val_stored, *len);
+        ret = sectrue;
+    } else {
+        if (sectrue != unlocked) {
+            return secfalse;
+        }
+        ret = storage_get_encrypted(key, val_dest, max_len, len);
     }
 
-    // The data will need to be encrypted, so preallocate space on the flash storage.
+    return ret;
+}
+
+/*
+ * Encrypts the data at val using cached_dek as the encryption key and stores the ciphertext under key.
+ */
+static secbool storage_set_encrypted(const uint16_t key, const void *val, const uint16_t len)
+{
+    // Preallocate space on the flash storage.
     uint16_t offset = 0;
     if (sectrue != norcow_set(key, NULL, CHACHA20_IV_SIZE + len + POLY1305_MAC_SIZE)) {
         return secfalse;
@@ -661,6 +640,22 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
     memzero(&ctx, sizeof(ctx));
     memzero(buffer, sizeof(buffer));
     return ret;
+}
+
+secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
+{
+    const uint8_t app = key >> 8;
+
+    // APP == 0 is reserved for PIN related values
+    if (sectrue != initialized || sectrue != unlocked || app == APP_STORAGE) {
+        return secfalse;
+    }
+
+    if ((app & FLAG_PUBLIC) != 0) {
+        return norcow_set(key, val, len);
+    } else {
+        return storage_set_encrypted(key, val, len);
+    }
 }
 
 secbool storage_has_pin(void)
@@ -737,16 +732,9 @@ static void handle_fault()
     for(;;);
 }
 
-static uint32_t hamming_weight(uint32_t value)
-{
-    value = value - ((value >> 1) & 0x55555555);
-    value = (value & 0x33333333) + ((value >> 2) & 0x33333333);
-    value = (value + (value >> 4)) & 0x0F0F0F0F;
-    value = value + (value >> 8);
-    value = value + (value >> 16);
-    return value & 0x3F;
-}
-
+/*
+ * Reads the PIN fail counter in version 0 format. Returns the current number of failed PIN entries.
+ */
 static secbool v0_pin_get_fails(uint32_t *ctr)
 {
     const uint16_t V0_PIN_FAIL_KEY = 0x0001;
@@ -774,4 +762,55 @@ static secbool v0_pin_get_fails(uint32_t *ctr)
     // No PIN failures
     *ctr = 0;
     return sectrue;
+}
+
+static secbool storage_upgrade()
+{
+    const uint16_t V0_PIN_KEY = 0x0000;
+    const uint16_t V0_PIN_FAIL_KEY = 0x0001;
+    uint16_t key = 0;
+    uint16_t len = 0;
+    const void *val = NULL;
+
+    if (norcow_active_version == 0) {
+        random_buffer(cached_dek, DEK_SIZE);
+
+        // Set EDEK_PVC_KEY and PIN_NOT_SET_KEY.
+        if (sectrue == norcow_get(V0_PIN_KEY, &val, &len)) {
+            set_pin(*(const uint32_t*)val);
+        } else {
+            set_pin(PIN_EMPTY);
+        }
+
+        // Convert PIN failure counter.
+        uint32_t fails = 0;
+        v0_pin_get_fails(&fails);
+        pin_logs_init(fails);
+
+        // Copy the remaining entries (encrypting the private ones).
+        uint32_t offset = 0;
+        while (sectrue == norcow_get_next(&offset, &key, &val, &len)) {
+            if (key == V0_PIN_KEY || key == V0_PIN_FAIL_KEY) {
+                continue;
+            }
+
+            secbool ret;
+            if (((key >> 8) & FLAG_PUBLIC) != 0) {
+                ret = norcow_set(key, val, len);
+            } else {
+                ret = storage_set_encrypted(key, val, len);
+            }
+
+            if (sectrue != ret) {
+                return secfalse;
+            }
+        }
+
+        memzero(cached_dek, DEK_SIZE);
+    } else {
+        return secfalse;
+    }
+
+    norcow_active_version = NORCOW_VERSION;
+    return norcow_upgrade_finish();
 }

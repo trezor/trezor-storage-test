@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -fPIC -DTREZOR_STORAGE_TEST
+CFLAGS = -Wall -Wshadow -Wextra -Wpedantic -Werror -fPIC -DTREZOR_STORAGE_TEST
 LIBS =
 INC = -I ../vendor/trezor-crypto
 OBJ = storage.o norcow.o flash.o
