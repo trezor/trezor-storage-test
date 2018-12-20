@@ -422,9 +422,9 @@ static secbool unlock(uint32_t pin)
         return secfalse;
     }
 
-    const uint8_t *salt = buffer;
-    const uint8_t *edek = buffer + RANDOM_SALT_SIZE;
-    const uint8_t *pvc = buffer + RANDOM_SALT_SIZE + DEK_SIZE;
+    const uint8_t *salt = (const uint8_t*) buffer;
+    const uint8_t *edek = (const uint8_t*) buffer + RANDOM_SALT_SIZE;
+    const uint8_t *pvc  = (const uint8_t*) buffer + RANDOM_SALT_SIZE + DEK_SIZE;
     uint8_t kek[SHA256_DIGEST_LENGTH];
     uint8_t keiv[SHA256_DIGEST_LENGTH];
     uint8_t dek[DEK_SIZE];
@@ -541,9 +541,9 @@ static secbool storage_get_encrypted(const uint16_t key, void *val_dest, const u
         return secfalse;
     }
 
-    const uint8_t *iv = val_stored;
-    const uint8_t *ciphertext = val_stored + CHACHA20_IV_SIZE;
-    const uint8_t *mac_stored = val_stored + CHACHA20_IV_SIZE + *len;
+    const uint8_t *iv = (const uint8_t*) val_stored;
+    const uint8_t *ciphertext = (const uint8_t*) val_stored + CHACHA20_IV_SIZE;
+    const uint8_t *mac_stored = (const uint8_t*) val_stored + CHACHA20_IV_SIZE + *len;
     uint8_t mac_computed[POLY1305_MAC_SIZE];
     chacha20poly1305_ctx ctx;
     rfc7539_init(&ctx, cached_dek, iv);
