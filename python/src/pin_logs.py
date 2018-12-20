@@ -39,9 +39,7 @@ def get_init_logs(guard_key: bytes) -> bytes:
     )
 
 
-def write_attempt_to_log(
-    guard_mask: bytes, guard: bytes, pin_entry_log: bytes
-) -> bytes:
+def write_attempt_to_log(guard_mask: int, guard: int, pin_entry_log: bytes) -> bytes:
     pin_entry_log = to_int_by_words(pin_entry_log)
 
     assert (pin_entry_log & guard_mask) == guard
@@ -51,6 +49,19 @@ def write_attempt_to_log(
     pin_entry_log = (clean_pin_entry_log & (~guard_mask & consts.ALL_FF_LOG)) | guard
 
     return to_bytes_by_words(pin_entry_log)
+
+
+def get_failures_count(
+    guard_mask: int, guard: int, pin_succes_log: bytes, pin_entry_log: bytes
+) -> int:
+    pin_succes_log = to_int_by_words(pin_succes_log)
+    pin_entry_log = to_int_by_words(pin_entry_log)
+
+    pin_succes_log = remove_guard_bits(guard_mask, pin_succes_log)
+    pin_entry_log = remove_guard_bits(guard_mask, pin_entry_log)
+
+    # divide by two because bits are doubled after remove_guard_bits()
+    return bin(pin_succes_log - pin_entry_log).count("1") // 2
 
 
 def remove_guard_bits(guard_mask: int, log: int) -> int:

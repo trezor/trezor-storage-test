@@ -53,6 +53,10 @@ class Storage:
         guard_key = pin_log[: consts.PIN_LOG_GUARD_KEY_SIZE]
         guard_mask, guard = pin_logs.derive_guard_mask_and_value(guard_key)
         pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
+        pin_succes_log = pin_log[
+            consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE
+            + consts.PIN_LOG_SIZE
+        ]
 
         pin_entry_log = pin_logs.write_attempt_to_log(guard_mask, guard, pin_entry_log)
         pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :] = pin_entry_log
@@ -71,6 +75,12 @@ class Storage:
                 + consts.PIN_LOG_SIZE
             ] = pin_success_log
             self.nc.replace(consts.PIN_LOG_KEY, pin_log)
+        else:
+            fails = pin_logs.get_failures_count(
+                guard_mask, guard, pin_succes_log, pin_entry_log
+            )
+            if fails >= consts.PIN_MAX_TRIES:
+                self.wipe()
 
         return is_valid
 
