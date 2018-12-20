@@ -99,6 +99,8 @@ static const uint8_t FALSE_BYTE = 0x00;
 
 static void handle_fault();
 static secbool storage_upgrade();
+static secbool storage_set_encrypted(const uint16_t key, const void *val, const uint16_t len);
+static secbool storage_get_encrypted(const uint16_t key, void *val_dest, const uint16_t max_len, uint16_t *len);
 
 /*
  *  Generates a delay of random length. Use this to protect sensitive code against fault injection.
@@ -220,11 +222,14 @@ static secbool pin_logs_init(uint32_t fails)
 }
 
 /*
- * Initializes the values of EDEK_PVC_KEY, PIN_NOT_SET_KEY and PIN_LOGS_KEY using an empty PIN.
+ * Initializes the values of VERSION_KEY, EDEK_PVC_KEY, PIN_NOT_SET_KEY and PIN_LOGS_KEY using an empty PIN.
+ * This function should be called to initialize freshly wiped storage.
  */
-static void edek_pin_init()
+static void init_wiped_storage()
 {
     random_buffer(cached_dek, DEK_SIZE);
+    uint32_t version = NORCOW_VERSION;
+    storage_set_encrypted(VERSION_KEY, &version, sizeof(version));
     set_pin(PIN_EMPTY);
     pin_logs_init(0);
     memzero(cached_dek, DEK_SIZE);
@@ -251,7 +256,7 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint
     const void *val;
     uint16_t len;
     if (secfalse == norcow_get(EDEK_PVC_KEY, &val, &len)) {
-        edek_pin_init();
+        init_wiped_storage();
     }
     memzero(cached_dek, DEK_SIZE);
 }
@@ -414,7 +419,6 @@ static secbool pin_get_fails(uint32_t *ctr)
 
 static secbool unlock(uint32_t pin)
 {
-    // TODO check version
     const void *buffer = NULL;
     uint16_t len = 0;
     if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != RANDOM_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
@@ -430,8 +434,8 @@ static secbool unlock(uint32_t pin)
     uint8_t dek[DEK_SIZE];
     uint8_t mac[POLY1305_MAC_SIZE];
     chacha20poly1305_ctx ctx;
-    secbool ret = secfalse;
 
+    // Decrypt the data encryption key and check the PIN verification code.
     derive_kek(pin, salt, kek, keiv);
     memzero(&pin, sizeof(pin));
     rfc7539_init(&ctx, kek, keiv);
@@ -441,13 +445,23 @@ static secbool unlock(uint32_t pin)
     rfc7539_finish(&ctx, 0, DEK_SIZE, mac);
     memzero(&ctx, sizeof(ctx));
     wait_random();
-    if (memcmp(mac, pvc, PVC_SIZE) == 0) {
-        memcpy(cached_dek, dek, sizeof(dek));
-        ret = sectrue;
+    if (memcmp(mac, pvc, PVC_SIZE) != 0) {
+        memzero(dek, sizeof(dek));
+        memzero(mac, sizeof(mac));
+        return secfalse;
     }
+    memcpy(cached_dek, dek, sizeof(dek));
     memzero(dek, sizeof(dek));
     memzero(mac, sizeof(mac));
-    return ret;
+
+    // Check that the authenticated version number matches the norcow version.
+    uint32_t version;
+    if (sectrue != storage_get_encrypted(VERSION_KEY, &version, sizeof(version), &len) || version != norcow_active_version) {
+        handle_fault();
+        return secfalse;
+    }
+
+    return sectrue;
 }
 
 secbool storage_unlock(uint32_t pin)
@@ -699,7 +713,7 @@ void storage_wipe(void)
 {
     norcow_wipe();
     norcow_active_version = NORCOW_VERSION;
-    edek_pin_init();
+    init_wiped_storage();
 }
 
 static void handle_fault()
@@ -774,6 +788,12 @@ static secbool storage_upgrade()
 
     if (norcow_active_version == 0) {
         random_buffer(cached_dek, DEK_SIZE);
+
+        // Set the new storage version number.
+        uint32_t version = NORCOW_VERSION;
+        if (sectrue != storage_set_encrypted(VERSION_KEY, &version, sizeof(version))) {
+            return secfalse;
+        }
 
         // Set EDEK_PVC_KEY and PIN_NOT_SET_KEY.
         if (sectrue == norcow_get(V0_PIN_KEY, &val, &len)) {
