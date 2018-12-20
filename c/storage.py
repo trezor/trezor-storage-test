@@ -35,7 +35,7 @@ class Storage:
     def get(self, key: int) -> bytes:
         val_len = c.c_uint16()
         if sectrue != self.lib.storage_get(c.c_uint16(key), None, 0, c.byref(val_len)):
-            raise RuntimeError("Failed to value length from storage.")
+            raise RuntimeError("Failed to find key in storage.")
         s = c.create_string_buffer(val_len.value)
         if sectrue != self.lib.storage_get(c.c_uint16(key), s, val_len, c.byref(val_len)):
             raise RuntimeError("Failed to get value from storage.")
@@ -48,3 +48,11 @@ class Storage:
     def _dump(self) -> bytes:
         # return just sectors 4 and 16 of the whole flash
         return [self.flash_buffer[0x010000:0x010000 + 0x10000], self.flash_buffer[0x110000:0x110000 + 0x10000]]
+
+    def _get_flash_buffer(self) -> bytes:
+        return bytes(self.flash_buffer)
+
+    def _set_flash_buffer(self, buf: bytes) -> None:
+        if len(buf) != self.flash_size:
+            raise RuntimeError("Failed to set flash buffer due to length mismatch.")
+        self.flash_buffer.value = buf

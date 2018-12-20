@@ -2,6 +2,7 @@
 
 build:
 	$(MAKE) -C c
+	$(MAKE) -C c0
 
 ## submodules:
 vendor:
