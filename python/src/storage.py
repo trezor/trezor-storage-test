@@ -10,12 +10,11 @@ class Storage:
         self.initialized = False
         self.unlocked = False
         self.dek = None
-
-    def init(self, hardware_salt: bytes) -> None:
-        self.initialized = False
-        self.unlocked = False
         self.nc = Norcow()
         self.nc.init()
+
+    def init(self, hardware_salt: bytes=b"") -> None:
+        self.unlocked = False
         self.initialized = True
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
         # TODO check if EDEK already present?
@@ -24,7 +23,6 @@ class Storage:
     def _init_pin(self):
         # generate random Data Encryption Key
         self.dek = prng.random_buffer(consts.DEK_SIZE)
-
         self._set_pin(consts.PIN_EMPTY)
 
         guard_key = prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
@@ -48,12 +46,17 @@ class Storage:
 
     def wipe(self) -> None:
         self.nc.wipe()
+        self._init_pin()
 
     def check_pin(self, pin: int) -> bool:
         pin_log = self.nc.get(consts.PIN_LOG_KEY)
         guard_key = pin_log[: consts.PIN_LOG_GUARD_KEY_SIZE]
         guard_mask, guard = pin_logs.derive_guard_mask_and_value(guard_key)
         pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
+        pin_succes_log = pin_log[
+            consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE
+            + consts.PIN_LOG_SIZE
+        ]
 
         pin_entry_log = pin_logs.write_attempt_to_log(guard_mask, guard, pin_entry_log)
         pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :] = pin_entry_log
@@ -72,6 +75,12 @@ class Storage:
                 + consts.PIN_LOG_SIZE
             ] = pin_success_log
             self.nc.replace(consts.PIN_LOG_KEY, pin_log)
+        else:
+            fails = pin_logs.get_failures_count(
+                guard_mask, guard, pin_succes_log, pin_entry_log
+            )
+            if fails >= consts.PIN_MAX_TRIES:
+                self.wipe()
 
         return is_valid
 

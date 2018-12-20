@@ -2,6 +2,7 @@ import pytest
 
 from c.storage import Storage as StorageC
 from python.src.storage import Storage as StoragePy
+from python.src import consts
 
 from . import common
 
@@ -52,3 +53,35 @@ def test_has_pin():
         assert s.has_pin()
         s.change_pin(221, 1)
         assert not s.has_pin()
+
+
+def test_wipe_after_max_pin():
+    sc = StorageC()
+    sp = StoragePy()
+    for s in (sc, sp):
+        s.init(b"\x22\x22\x22\x22\x22\x22")
+        s.unlock(1)
+        s.change_pin(1, 2221)
+        s.unlock(2221)
+        s.set(0x0202, b"Hello")
+
+        # try an invalid PIN MAX - 1 times
+        for i in range(consts.PIN_MAX_TRIES - 1):
+            with pytest.raises(RuntimeError):
+                s.unlock(99991)
+        # this should pass
+        s.unlock(2221)
+        assert s.get(0x0202) == b"Hello"
+
+        # try an invalid PIN MAX times, the storage should get wiped
+        for i in range(consts.PIN_MAX_TRIES):
+            with pytest.raises(RuntimeError):
+                s.unlock(99991)
+        assert i == consts.PIN_MAX_TRIES - 1
+        # this should raise an exception, the storage is wiped
+        with pytest.raises(RuntimeError):
+            s.unlock(2221)
+        with pytest.raises(RuntimeError):
+            assert s.get(0x0202) == b"Hello"
+
+    assert common.memory_equals(sc, sp)

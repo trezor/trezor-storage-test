@@ -13,7 +13,7 @@ PIN_NOT_SET_KEY = (PIN_APP_ID << 8) | 0x03
 PIN_EMPTY = 1
 
 # Maximum number of failed unlock attempts.
-PIN_MAX_TRIES = 15
+PIN_MAX_TRIES = 16
 
 # The total number of iterations to use in PBKDF2.
 PIN_ITER_COUNT = 20000
