@@ -84,23 +84,25 @@ class Storage:
 
         return is_valid
 
-    def unlock(self, pin: int) -> None:
+    def unlock(self, pin: int) -> bool:
         self.unlocked = False
         if self.initialized and self.check_pin(pin):
             self.unlocked = True
+            return True
         else:
-            raise RuntimeError("Failed to unlock storage.")
+            return False
 
     def has_pin(self) -> bool:
         val = self.nc.get(consts.PIN_NOT_SET_KEY)
         return val != consts.TRUE_BYTE
 
-    def change_pin(self, oldpin: int, newpin: int) -> None:
+    def change_pin(self, oldpin: int, newpin: int) -> bool:
         if not self.initialized or not self.unlocked:
-            raise RuntimeError("Storage not initialized or locked")
+            return False
         if not self.check_pin(oldpin):
-            raise RuntimeError("Invalid PIN")
+            return False
         self._set_pin(newpin)
+        return True
 
     def get(self, key: int) -> bytes:
         app = key >> 8

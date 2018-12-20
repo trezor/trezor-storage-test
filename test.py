@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from c.storage import Storage as StorageC
+from c0.storage import Storage as StorageC0
 from python.src.storage import Storage as StoragePy
 
 from hashlib import sha256
@@ -10,32 +11,21 @@ def hash(data):
     return sha256(data).hexdigest()[:16]
 
 
-sc = StorageC()
-sp = StoragePy()
-a = []
-
 # Strings for testing ChaCha20 encryption.
 test_strings = [b"Short string.", b"", b"Although ChaCha20 is a stream cipher, it operates on blocks of 64 bytes. This string is over 152 bytes in length so that we test multi-block encryption.", b"This string is exactly 64 bytes long, that is exactly one block."]
 
 # Unique device ID for testing.
 uid = b"\x67\xce\x6a\xe8\xf7\x9b\x73\x96\x83\x88\x21\x5e"
 
+sc = StorageC()
+sp = StoragePy()
+a = []
+
 for s in [sc, sp]:
     print(s.__class__)
     s.init(uid)
-    try:
-        s.unlock(3)
-    except Exception:
-        pass
-    try:
-        s.unlock(3)
-    except Exception:
-        pass
-    try:
-        s.unlock(3)
-    except Exception:
-        pass
-    s.unlock(1)
+    assert s.unlock(3) == False
+    assert s.unlock(1) == True
     s.set(0xbeef, b"hello")
     s.set(0x03fe, b"world!")
     s.set(0xbeef, b"satoshi")

@@ -9,12 +9,12 @@ def test_set_pin_success():
     hw_salt = b"\x00\x00\x00\x00\x00\x00"
     s.init(hw_salt)
     s._set_pin(1)
-    s.unlock(1)
+    assert s.unlock(1) == True
 
     s = Storage()
     s.init(hw_salt)
     s._set_pin(229922)
-    s.unlock(229922)
+    assert s.unlock(229922) == True
 
 
 def test_set_pin_failure():
@@ -22,15 +22,13 @@ def test_set_pin_failure():
     hw_salt = b"\x00\x00\x00\x00\x00\x00"
     s.init(hw_salt)
     s._set_pin(1)
-    s.unlock(1)
-    with pytest.raises(RuntimeError):
-        s.unlock(1234)
+    assert s.unlock(1) == True
+    assert s.unlock(1234) == False
 
     s = Storage()
     s.init(hw_salt)
     s._set_pin(229922)
-    with pytest.raises(RuntimeError):
-        assert s.unlock(1122992211)
+    assert s.unlock(1122992211) == False
 
 
 def test_read_bytes_by_words():

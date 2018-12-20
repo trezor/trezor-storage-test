@@ -18,9 +18,8 @@ class Storage:
     def wipe(self) -> None:
         self.lib.storage_wipe()
 
-    def unlock(self, pin: int) -> None:
-        if sectrue != self.lib.storage_unlock(c.c_uint32(pin)):
-            raise RuntimeError("Failed to unlock storage.")
+    def unlock(self, pin: int) -> bool:
+        return sectrue == self.lib.storage_unlock(c.c_uint32(pin))
 
     def has_pin(self) -> bool:
         return sectrue == self.lib.storage_has_pin()
@@ -28,9 +27,8 @@ class Storage:
     def get_pin_rem(self) -> int:
         return self.lib.storage_get_pin_rem()
 
-    def change_pin(self, oldpin: int, newpin: int) -> None:
-        if sectrue != self.lib.storage_change_pin(c.c_uint32(oldpin), c.c_uint32(newpin)):
-            raise RuntimeError("Failed to change PIN.")
+    def change_pin(self, oldpin: int, newpin: int) -> bool:
+        return sectrue == self.lib.storage_change_pin(c.c_uint32(oldpin), c.c_uint32(newpin))
 
     def get(self, key: int) -> bytes:
         val_len = c.c_uint16()

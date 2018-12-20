@@ -12,7 +12,7 @@ def init() -> (StorageC, StoragePy):
     sp = StoragePy()
     for s in (sc, sp):
         s.init(common.uid)
-        s.unlock(1)
+        assert s.unlock(1) == True
     return sc, sp
 
 

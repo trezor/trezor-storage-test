@@ -34,11 +34,12 @@ class Storage:
         val_ptr = c.c_void_p()
         val_len = c.c_uint16()
         if sectrue != self.lib.storage_get(c.c_uint16(key), c.byref(val_ptr), c.byref(val_len)):
-            raise RuntimeError("storage_get failed")
+            raise RuntimeError("Failed to find key in storage.")
         return c.string_at(val_ptr, size=val_len.value)
 
-    def set(self, key: int, val: bytes) -> bool:
-        return sectrue == self.lib.storage_set(c.c_uint16(key), val, c.c_uint16(len(val)))
+    def set(self, key: int, val: bytes) -> None:
+        if sectrue != self.lib.storage_set(c.c_uint16(key), val, c.c_uint16(len(val))):
+            raise RuntimeError("Failed to set value in storage.")
 
     def _dump(self) -> bytes:
         # return just sectors 4 and 16 of the whole flash
