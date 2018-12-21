@@ -1,5 +1,3 @@
-import pytest
-
 from c0.storage import Storage as StorageC0
 from c.storage import Storage as StorageC
 
@@ -32,7 +30,7 @@ def set_values(s):
 
 
 def check_values(s):
-    assert s.unlock(199) == True
+    assert s.unlock(199)
     assert s.get(0xAAAA) == b"are"
     assert s.get(0x0901) == b"you?"
     assert s.get(0x0902) == b"Lorem"
@@ -46,10 +44,10 @@ def check_values(s):
 def test_upgrade():
     sc0 = StorageC0()
     sc0.init()
-    assert sc0.unlock(1) == True
+    assert sc0.unlock(1)
     set_values(sc0)
     for _ in range(10):
-        assert sc0.unlock(3) == False
+        assert not sc0.unlock(3)
 
     sc1 = StorageC()
     sc1._set_flash_buffer(sc0._get_flash_buffer())
