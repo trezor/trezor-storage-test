@@ -247,9 +247,9 @@ static uint32_t find_free_offset(uint8_t sector)
  */
 static void compact()
 {
-    uint32_t offset;
+    uint32_t offsetr;
     uint32_t version;
-    if (sectrue != find_start_offset(norcow_active_sector, &offset, &version)) {
+    if (sectrue != find_start_offset(norcow_active_sector, &offsetr, &version)) {
         return;
     }
 
@@ -261,40 +261,16 @@ static void compact()
         // read item
         uint16_t k, l;
         const void *v;
-        uint32_t pos;
-        secbool r = read_item(norcow_active_sector, offset, &k, &v, &l, &pos);
+        uint32_t posr;
+        secbool r = read_item(norcow_active_sector, offsetr, &k, &v, &l, &posr);
         if (sectrue != r) {
             break;
         }
-        offset = pos;
+        offsetr = posr;
 
         // skip erased items
         if (k == NORCOW_KEY_ERASED) {
             continue;
-        }
-
-        // check if not already saved
-        const void *v2;
-        uint16_t l2;
-        r = find_item(norcow_write_sector, k, &v2, &l2);
-        if (sectrue == r) {
-            continue;
-        }
-
-        // scan for latest instance
-        uint32_t offsetr = offset;
-        for (;;) {
-            uint16_t k2;
-            uint32_t posr;
-            r = read_item(norcow_active_sector, offsetr, &k2, &v2, &l2, &posr);
-            if (sectrue != r) {
-                break;
-            }
-            if (k == k2) {
-                v = v2;
-                l = l2;
-            }
-            offsetr = posr;
         }
 
         // copy the last item
