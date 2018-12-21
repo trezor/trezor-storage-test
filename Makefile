@@ -10,6 +10,9 @@ vendor:
 
 ## tests commands:
 tests:
+	pytest --ignore=vendor -k "not hypothesis"
+
+tests_all:
 	pytest --ignore=vendor
 
 ## style commands:
