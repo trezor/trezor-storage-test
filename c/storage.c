@@ -88,6 +88,10 @@
 // The length of the ChaCha20 block in bytes.
 #define CHACHA20_BLOCK_SIZE 64
 
+// Values used in the guard key integrity check.
+#define GUARD_KEY_MODULUS   6311
+#define GUARD_KEY_REMAINDER 15
+
 static secbool initialized = secfalse;
 static secbool unlocked = secfalse;
 static PIN_UI_WAIT_CALLBACK ui_callback = NULL;
@@ -182,9 +186,52 @@ static secbool set_pin(uint32_t pin)
     return ret;
 }
 
+static secbool check_guard_key(const uint32_t guard_key)
+{
+    if (guard_key % GUARD_KEY_MODULUS != GUARD_KEY_REMAINDER) {
+        return secfalse;
+    }
+
+    // Check that each byte of (guard_key & 0xAAAAAAAA) has exactly two bits set.
+    uint32_t count = (guard_key & 0x22222222) + ((guard_key >> 2) & 0x22222222);
+    count = count + (count >> 4);
+    if ((count & 0x0e0e0e0e) != 0x04040404) {
+        return secfalse;
+    }
+
+    // Check that the guard_key does not contain a run of 5 (or more) zeros or ones.
+    uint32_t zero_runs = ~guard_key;
+    zero_runs = zero_runs & (zero_runs >> 2);
+    zero_runs = zero_runs & (zero_runs >> 1);
+    zero_runs = zero_runs & (zero_runs >> 1);
+
+    uint32_t one_runs = guard_key;
+    one_runs = one_runs & (one_runs >> 2);
+    one_runs = one_runs & (one_runs >> 1);
+    one_runs = one_runs & (one_runs >> 1);
+
+    if ((one_runs != 0) || (zero_runs != 0)) {
+        return secfalse;
+    }
+
+    return sectrue;
+}
+
+static uint32_t generate_guard_key()
+{
+    uint32_t guard_key = 0;
+    do {
+        guard_key = random_uniform((0xFFFFFFFF/GUARD_KEY_MODULUS) + 1) * GUARD_KEY_MODULUS + GUARD_KEY_REMAINDER;
+    } while (sectrue != check_guard_key(guard_key));
+    return guard_key;
+}
+
 static secbool expand_guard_key(const uint32_t guard_key, uint32_t *guard_mask, uint32_t *guard)
 {
-    // TODO Add guard_key integrity check. Call handle_fault() on failure.
+    if (sectrue != check_guard_key(guard_key)) {
+        handle_fault();
+        return secfalse;
+    }
     *guard_mask = ((guard_key & LOW_MASK) << 1) | ((~guard_key) & LOW_MASK);
     *guard = (((guard_key & LOW_MASK) << 1) & guard_key) | (((~guard_key) & LOW_MASK) & (guard_key >> 1));
     return sectrue;
@@ -200,8 +247,7 @@ static secbool pin_logs_init(uint32_t fails)
     // guard_key (1 word), pin_success_log (PIN_LOG_WORDS), pin_entry_log (PIN_LOG_WORDS)
     uint32_t logs[GUARD_KEY_WORDS + 2*PIN_LOG_WORDS];
 
-    // TODO Generate guard key so that it satisfies the integrity check.
-    random_buffer((uint8_t*)logs, sizeof(uint32_t));
+    logs[0] = generate_guard_key();
 
     uint32_t guard_mask;
     uint32_t guard;
