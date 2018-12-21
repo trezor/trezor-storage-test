@@ -1,8 +1,9 @@
 import hashlib
 import sys
 
-from . import consts, crypto, pin_logs, prng
+from . import consts, crypto, prng
 from .norcow import Norcow
+from .pin_log import PinLog
 
 
 class Storage:
@@ -12,6 +13,7 @@ class Storage:
         self.dek = None
         self.nc = Norcow()
         self.nc.init()
+        self.pin_log = PinLog(self.nc)
 
     def init(self, hardware_salt: bytes = b"") -> None:
         self.unlocked = False
@@ -26,8 +28,7 @@ class Storage:
         self._set_encrypt(consts.VERSION_KEY, b"\x01\x00\x00\x00")
         self._set_pin(consts.PIN_EMPTY)
 
-        guard_key = prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
-        self.nc.set(consts.PIN_LOG_KEY, pin_logs.get_init_logs(guard_key))
+        self.pin_log.init()
 
     def _set_pin(self, pin: int):
         random_salt = prng.random_buffer(consts.PIN_SALT_SIZE)
@@ -50,18 +51,7 @@ class Storage:
         self._init_pin()
 
     def check_pin(self, pin: int) -> bool:
-        pin_log = self.nc.get(consts.PIN_LOG_KEY)
-        guard_key = pin_log[: consts.PIN_LOG_GUARD_KEY_SIZE]
-        guard_mask, guard = pin_logs.derive_guard_mask_and_value(guard_key)
-        pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
-        pin_succes_log = pin_log[
-            consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE
-            + consts.PIN_LOG_SIZE
-        ]
-
-        pin_entry_log = pin_logs.write_attempt_to_log(guard_mask, guard, pin_entry_log)
-        pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :] = pin_entry_log
-        self.nc.replace(consts.PIN_LOG_KEY, pin_log)
+        self.pin_log.write_attempt()
 
         data = self.nc.get(consts.EDEK_PVC_KEY)
         salt = self.hw_salt_hash + data[: consts.PIN_SALT_SIZE]
@@ -70,16 +60,10 @@ class Storage:
         is_valid = crypto.validate_pin(pin, salt, edek, pvc)
 
         if is_valid:
-            pin_success_log = pin_entry_log
-            pin_log[
-                consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE
-                + consts.PIN_LOG_SIZE
-            ] = pin_success_log
-            self.nc.replace(consts.PIN_LOG_KEY, pin_log)
+            self.pin_log.write_success()
+
         else:
-            fails = pin_logs.get_failures_count(
-                guard_mask, guard, pin_succes_log, pin_entry_log
-            )
+            fails = self.pin_log.get_failures_count()
             if fails >= consts.PIN_MAX_TRIES:
                 self.wipe()
 
