@@ -1,7 +1,7 @@
 import pytest
 
-from c.storage import Storage as StorageC
 from c0.storage import Storage as StorageC0
+from c.storage import Storage as StorageC
 
 from . import common
 
@@ -12,6 +12,7 @@ chacha_strings = [
     b"Although ChaCha20 is a stream cipher, it operates on blocks of 64 bytes. This string is over 152 bytes in length so that we test multi-block encryption.",
     b"This string is exactly 64 bytes long, that is exactly one block.",
 ]
+
 
 def set_values(s):
     s.set(0xBEEF, b"Hello")
@@ -29,6 +30,7 @@ def set_values(s):
     for i, string in enumerate(chacha_strings):
         s.set(0x0301 + i, string)
 
+
 def check_values(s):
     assert s.unlock(199) == True
     assert s.get(0xAAAA) == b"are"
@@ -39,6 +41,7 @@ def check_values(s):
     assert s.get(0x2200) == b"BBBB"
     for i, string in enumerate(chacha_strings):
         assert s.get(0x0301 + i) == string
+
 
 def test_upgrade():
     sc0 = StorageC0()

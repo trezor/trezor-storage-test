@@ -13,7 +13,7 @@ class Storage:
         self.nc = Norcow()
         self.nc.init()
 
-    def init(self, hardware_salt: bytes=b"") -> None:
+    def init(self, hardware_salt: bytes = b"") -> None:
         self.unlocked = False
         self.initialized = True
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
@@ -23,6 +23,7 @@ class Storage:
     def _init_pin(self):
         # generate random Data Encryption Key
         self.dek = prng.random_buffer(consts.DEK_SIZE)
+        self._set_encrypt(consts.VERSION_KEY, b"\x01\x00\x00\x00")
         self._set_pin(consts.PIN_EMPTY)
 
         guard_key = prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
@@ -86,11 +87,15 @@ class Storage:
 
     def unlock(self, pin: int) -> bool:
         self.unlocked = False
-        if self.initialized and self.check_pin(pin):
-            self.unlocked = True
-            return True
-        else:
+        if not self.initialized or not self.check_pin(pin):
             return False
+
+        version = self.get_encrypt(consts.VERSION_KEY)
+        if version != consts.NORCOW_VERSION:
+            return False
+
+        self.unlocked = True
+        return True
 
     def has_pin(self) -> bool:
         val = self.nc.get(consts.PIN_NOT_SET_KEY)
@@ -113,7 +118,9 @@ class Storage:
             raise RuntimeError("Storage locked")
         if app & consts.FLAG_PUBLIC:
             return self.nc.get(key)
+        return self.get_encrypt(key)
 
+    def get_encrypt(self, key: int) -> bytes:
         data = self.nc.get(key)
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
@@ -128,7 +135,9 @@ class Storage:
             raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
         if app & consts.FLAG_PUBLIC:
             return self.nc.set(key, val)
+        return self._set_encrypt(key, val)
 
+    def _set_encrypt(self, key: int, val: bytes):
         # In C data are preallocated beforehand for encrypted values,
         # to match the behaviour we do the same.
         preallocate = b"\x00" * (

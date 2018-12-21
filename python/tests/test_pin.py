@@ -1,7 +1,7 @@
 import pytest
 
-from ..src.storage import Storage
 from ..src import pin_logs
+from ..src.storage import Storage
 
 
 def test_set_pin_success():

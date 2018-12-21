@@ -1,8 +1,8 @@
 import pytest
 
 from c.storage import Storage as StorageC
-from python.src.storage import Storage as StoragePy
 from python.src import consts
+from python.src.storage import Storage as StoragePy
 
 from . import common
 

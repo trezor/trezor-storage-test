@@ -9,6 +9,9 @@ EDEK_PVC_KEY = (PIN_APP_ID << 8) | 0x02
 # Storage key of the PIN set flag.
 PIN_NOT_SET_KEY = (PIN_APP_ID << 8) | 0x03
 
+# Norcow storage key of the storage version.
+VERSION_KEY = (PIN_APP_ID << 8) | 0x04
+
 # The PIN value corresponding to an empty PIN.
 PIN_EMPTY = 1
 
@@ -76,8 +79,21 @@ CHACHA_IV_SIZE = 12
 NORCOW_SECTOR_COUNT = 2
 NORCOW_SECTOR_SIZE = 64 * 1024
 
-# Magic flags at the beggining of an active sector.
-NORCOW_MAGIC_AND_VERSION = b"NRC2\xFE\xFF\xFF\xFF"
+# Magic flag at the beggining of an active sector.
+NORCOW_MAGIC = b"NRC2"
+
+# Norcow version, set in the storage header, but also as an encrypted item.
+NORCOW_VERSION = b"\x01\x00\x00\x00"
+
+# Norcow magic combined with the version, which is stored as its negation.
+NORCOW_MAGIC_AND_VERSION = NORCOW_MAGIC + bytes(
+    [
+        ~NORCOW_VERSION[0] & 0xFF,
+        ~NORCOW_VERSION[1] & 0xFF,
+        ~NORCOW_VERSION[2] & 0xFF,
+        ~NORCOW_VERSION[3] & 0xFF,
+    ]
+)
 
 # Signalizes free storage.
 NORCOW_KEY_FREE = 0xFFFF
