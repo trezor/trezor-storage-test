@@ -49,6 +49,9 @@ static const uint8_t norcow_sectors[NORCOW_SECTOR_COUNT] = NORCOW_SECTORS;
 static uint8_t norcow_active_sector = 0;
 static uint8_t norcow_write_sector = 0;
 
+// The norcow version of the reading sector.
+static uint32_t norcow_active_version = 0;
+
 // The offset of the first free item in the writing sector.
 static uint32_t norcow_free_offset = 0;
 
@@ -273,7 +276,7 @@ static void compact()
             continue;
         }
 
-        // copy the last item
+        // copy the item
         uint32_t posw;
         ensure(write_item(norcow_write_sector, offsetw, k, v, l, &posw), "compaction write failed");
         offsetw = posw;
@@ -281,6 +284,7 @@ static void compact()
 
     norcow_erase(norcow_active_sector, secfalse);
     norcow_active_sector = norcow_write_sector;
+    norcow_active_version = NORCOW_VERSION;
     norcow_free_offset = find_free_offset(norcow_write_sector);
 }
 
@@ -295,11 +299,10 @@ void norcow_init(uint32_t *norcow_version)
     // detect active sector - starts with magic and has highest version
     for (uint8_t i = 0; i < NORCOW_SECTOR_COUNT; i++) {
         uint32_t offset;
-        uint32_t version;
-        if (sectrue == find_start_offset(i, &offset, &version) && version >= *norcow_version) {
+        if (sectrue == find_start_offset(i, &offset, &norcow_active_version) && norcow_active_version >= *norcow_version) {
             found = sectrue;
             norcow_active_sector = i;
-            *norcow_version = version;
+            *norcow_version = norcow_active_version;
         }
     }
 
@@ -328,6 +331,7 @@ void norcow_wipe(void)
         norcow_erase(i, secfalse);
     }
     norcow_active_sector = 0;
+    norcow_active_version = NORCOW_VERSION;
     norcow_write_sector = 0;
     norcow_free_offset = NORCOW_STORAGE_START;
 }
@@ -365,21 +369,25 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
             continue;
         }
 
-        // Check whether the item is the latest instance.
-        uint32_t offsetr = *offset;
-        for (;;) {
-            uint16_t k;
-            uint16_t l;
-            const void *v;
-            ret = read_item(norcow_active_sector, offsetr, &k, &v, &l, &offsetr);
-            if (sectrue != ret) {
-                // There is no newer instance of the item.
-                return sectrue;
+        if (norcow_active_version == 0) {
+            // Check whether the item is the latest instance.
+            uint32_t offsetr = *offset;
+            for (;;) {
+                uint16_t k;
+                uint16_t l;
+                const void *v;
+                ret = read_item(norcow_active_sector, offsetr, &k, &v, &l, &offsetr);
+                if (sectrue != ret) {
+                    // There is no newer instance of the item.
+                    return sectrue;
+                }
+                if (*key == k) {
+                    // There exists a newer instance of the item.
+                    break;
+                }
             }
-            if (*key == k) {
-                // There exists a newer instance of the item.
-                break;
-            }
+        } else {
+            return sectrue;
         }
     }
     return secfalse;
@@ -504,5 +512,6 @@ secbool norcow_upgrade_finish()
 {
     norcow_erase(norcow_active_sector, secfalse);
     norcow_active_sector = norcow_write_sector;
+    norcow_active_version = NORCOW_VERSION;
     return sectrue;
 }
