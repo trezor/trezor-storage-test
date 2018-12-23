@@ -1,6 +1,3 @@
-import pytest
-
-from . import common
 from ..src import pin_log
 
 
