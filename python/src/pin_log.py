@@ -1,5 +1,3 @@
-import sys
-
 from . import consts, helpers, prng
 
 
@@ -8,21 +6,41 @@ class PinLog:
         self.norcow = norcow
 
     def init(self):
-        guard_key = prng.random_buffer(consts.PIN_LOG_GUARD_KEY_SIZE)
+        guard_key = self._generate_guard_key()
         guard_mask, guard = self.derive_guard_mask_and_value(guard_key)
 
         pin_success_log = (~guard_mask & consts.ALL_FF_LOG) | guard
         pin_entry_log = (~guard_mask & consts.ALL_FF_LOG) | guard
+        self._write_log(guard_key, pin_success_log, pin_entry_log)
 
-        data = (
-            guard_key
-            + helpers.to_bytes_by_words(pin_success_log)
-            + helpers.to_bytes_by_words(pin_entry_log)
+    def _generate_guard_key(self) -> int:
+        while True:
+            r = prng.random_uniform(consts.GUARD_KEY_RANDOM_MAX)
+            r = (r * consts.GUARD_KEY_MODULUS + consts.GUARD_KEY_REMAINDER) & 0xFFFFFFFF
+            if self._check_guard_key(r):
+                return r
+
+    def _check_guard_key(self, guard_key: int) -> bool:
+        count = (guard_key & 0x22222222) + ((guard_key >> 2) & 0x22222222)
+        count = count + (count >> 4)
+
+        zero_runs = ~guard_key & 0xFFFFFFFF
+        zero_runs = zero_runs & (zero_runs >> 2)
+        zero_runs = zero_runs & (zero_runs >> 1)
+        zero_runs = zero_runs & (zero_runs >> 1)
+        one_runs = guard_key
+        one_runs = one_runs & (one_runs >> 2)
+        one_runs = one_runs & (one_runs >> 1)
+        one_runs = one_runs & (one_runs >> 1)
+
+        return (
+            ((count & 0x0E0E0E0E) == 0x04040404)
+            & (one_runs == 0)
+            & (zero_runs == 0)
+            & (guard_key % consts.GUARD_KEY_MODULUS == consts.GUARD_KEY_REMAINDER)
         )
-        self.norcow.set(consts.PIN_LOG_KEY, data)
 
-    def derive_guard_mask_and_value(self, guard_key: bytes) -> (int, int):
-        guard_key = int.from_bytes(guard_key, sys.byteorder)
+    def derive_guard_mask_and_value(self, guard_key: int) -> (int, int):
         if guard_key > 0xFFFFFFFF:
             raise ValueError("Invalid guard key")
 
@@ -45,13 +63,13 @@ class PinLog:
             clean_pin_entry_log & (~guard_mask & consts.ALL_FF_LOG)
         ) | guard
 
-        self._write(guard_key, pin_success_log, pin_entry_log)
+        self._write_log(guard_key, pin_success_log, pin_entry_log)
 
     def write_success(self):
         guard_key, pin_success_log, pin_entry_log = self._get_logs()
         pin_success_log = pin_entry_log
 
-        self._write(guard_key, pin_success_log, pin_entry_log)
+        self._write_log(guard_key, pin_success_log, pin_entry_log)
 
     def get_failures_count(self) -> int:
         guard_key, pin_succes_log, pin_entry_log = self._get_logs()
@@ -77,21 +95,25 @@ class PinLog:
     def _get_logs(self) -> (int, int, int):
         pin_log = self.norcow.get(consts.PIN_LOG_KEY)
         guard_key = pin_log[: consts.PIN_LOG_GUARD_KEY_SIZE]
+        guard_key = helpers.word_to_int(guard_key)
         guard_mask, guard = self.derive_guard_mask_and_value(guard_key)
         pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
-        pin_entry_log = helpers.to_int_by_words(pin_entry_log)
+        pin_entry_log = helpers.log_to_int_by_words(pin_entry_log)
         pin_success_log = pin_log[
             consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE
             + consts.PIN_LOG_SIZE
         ]
-        pin_success_log = helpers.to_int_by_words(pin_success_log)
+        pin_success_log = helpers.log_to_int_by_words(pin_success_log)
 
         return guard_key, pin_success_log, pin_entry_log
 
-    def _write(self, guard_key: int, pin_success_log: int, pin_entry_log: int):
+    def _write_log(self, guard_key: int, pin_success_log: int, pin_entry_log: int):
         pin_log = (
-            guard_key
-            + helpers.to_bytes_by_words(pin_success_log)
-            + helpers.to_bytes_by_words(pin_entry_log)
+            helpers.int_to_word(guard_key)
+            + helpers.log_to_bytes_by_words(pin_success_log)
+            + helpers.log_to_bytes_by_words(pin_entry_log)
         )
-        self.norcow.replace(consts.PIN_LOG_KEY, pin_log)
+        try:
+            self.norcow.replace(consts.PIN_LOG_KEY, pin_log)
+        except RuntimeError:
+            self.norcow.set(consts.PIN_LOG_KEY, pin_log)

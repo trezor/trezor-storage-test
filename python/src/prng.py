@@ -19,3 +19,11 @@ def random32():
     global seed
     seed = (1664525 * seed + 1013904223) & 0xFFFFFFFF
     return seed
+
+
+def random_uniform(n: int):
+    max = 0xFFFFFFFF - (0xFFFFFFFF % n)
+    while True:
+        x = random32()
+        if x < max:
+            return x // (max // n)

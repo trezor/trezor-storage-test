@@ -10,7 +10,7 @@ def expand_to_log_size(value: int) -> int:
     return result
 
 
-def to_int_by_words(array: bytes) -> int:
+def log_to_int_by_words(array: bytes) -> int:
     """
     Converts array of bytes into an int by reading word size
     of bytes then converted to int using the system's endianness.
@@ -24,7 +24,7 @@ def to_int_by_words(array: bytes) -> int:
     return n
 
 
-def to_bytes_by_words(n: int) -> bytes:
+def log_to_bytes_by_words(n: int) -> bytes:
     """
     Converting int back to bytes by words.
     """
@@ -35,3 +35,11 @@ def to_bytes_by_words(n: int) -> bytes:
             consts.WORD_SIZE, sys.byteorder
         )
     return array
+
+
+def int_to_word(n: int) -> bytes:
+    return n.to_bytes(consts.WORD_SIZE, sys.byteorder)
+
+
+def word_to_int(b: bytes) -> int:
+    return int.from_bytes(b, sys.byteorder)

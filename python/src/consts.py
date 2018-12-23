@@ -45,6 +45,11 @@ PIN_LOG_KEY = (PIN_APP_ID << 8) | 0x01
 # Length of items in the PIN entry log
 PIN_LOG_GUARD_KEY_SIZE = 4
 
+# Values used for the guard key integrity check.
+GUARD_KEY_MODULUS = 6311
+GUARD_KEY_REMAINDER = 15
+GUARD_KEY_RANDOM_MAX = (0xFFFFFFFF // GUARD_KEY_MODULUS) + 1
+
 # Length of both success log and entry log
 PIN_LOG_SIZE = 64
 
