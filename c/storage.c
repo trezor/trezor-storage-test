@@ -278,6 +278,7 @@ static void init_wiped_storage()
     storage_set_encrypted(VERSION_KEY, &version, sizeof(version));
     set_pin(PIN_EMPTY);
     pin_logs_init(0);
+    unlocked = secfalse;
     memzero(cached_dek, DEK_SIZE);
 }
 
@@ -872,6 +873,7 @@ static secbool storage_upgrade()
             }
         }
 
+        unlocked = secfalse;
         memzero(cached_dek, DEK_SIZE);
     } else {
         return secfalse;
