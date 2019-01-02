@@ -15,6 +15,11 @@ def random_buffer(length: int) -> bytes:
     return bytes(b)
 
 
+def random_reseed(reseed: int = 0):
+    global seed
+    seed = reseed
+
+
 def random32():
     global seed
     seed = (1664525 * seed + 1013904223) & 0xFFFFFFFF

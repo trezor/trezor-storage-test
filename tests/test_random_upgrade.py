@@ -15,7 +15,7 @@ class StorageComparison(RuleBasedStateMachine):
         self.sc = StorageC0()
         self.sc.init()
         self.sm = StorageModel()
-        self.sm.init(common.uid)
+        self.sm.init(common.test_uid)
         self.storages = (self.sc, self.sm)
         self.ensure_unlocked()
 
@@ -55,7 +55,7 @@ class StorageComparison(RuleBasedStateMachine):
     def check_upgrade(self):
         sc1 = StorageC()
         sc1._set_flash_buffer(self.sc._get_flash_buffer())
-        sc1.init(common.uid)
+        sc1.init(common.test_uid)
         assert self.sm.get_pin_rem() == sc1.get_pin_rem()
         assert sc1.unlock(self.sm.pin)
         for k, v in self.sm:

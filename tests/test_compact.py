@@ -1,23 +1,12 @@
 import pytest
 
-from c.storage import Storage as StorageC
 from python.src import consts
-from python.src.storage import Storage as StoragePy
 
 from . import common
 
 
-def init() -> (StorageC, StoragePy):
-    sc = StorageC()
-    sp = StoragePy()
-    for s in (sc, sp):
-        s.init(common.uid)
-        assert s.unlock(1)
-    return sc, sp
-
-
 def test_compact():
-    sc, sp = init()
+    sc, sp = common.init(unlock=True)
     for s in (sc, sp):
         s.set(0xBEEF, b"hello")
         s.set(0xBEEF, b"asdasdasdasd")
@@ -32,7 +21,7 @@ def test_compact():
         s.set(0x09EE, b"worxxxxxxxxxxxxxxxxxx")
     assert common.memory_equals(sc, sp)
 
-    sc, sp = init()
+    sc, sp = common.init(unlock=True)
     for s in (sc, sp):
         s.set(0xBEEF, b"asdasdasdasd")
         s.set(0xBEEF, b"fsdasdasdasdasdsadasdsadasdasd")
