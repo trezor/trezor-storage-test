@@ -1,8 +1,5 @@
 import pytest
 
-from c.storage import Storage as StorageC
-from python.src.storage import Storage as StoragePy
-
 from . import common
 
 # Strings for testing ChaCha20 encryption.
@@ -14,17 +11,8 @@ chacha_strings = [
 ]
 
 
-def init() -> (StorageC, StoragePy):
-    sc = StorageC()
-    sp = StoragePy()
-    for s in (sc, sp):
-        s.init(common.uid)
-        assert s.unlock(1)
-    return sc, sp
-
-
 def test_set_get():
-    sc, sp = init()
+    sc, sp = common.init(unlock=True)
     for s in (sc, sp):
         s.set(0xBEEF, b"Hello")
         s.set(0xCAFE, b"world!  ")
@@ -61,13 +49,13 @@ def test_set_get():
 
 
 def test_invalid_key():
-    for s in init():
+    for s in common.init(unlock=True):
         with pytest.raises(RuntimeError):
             s.set(0xFFFF, b"Hello")
 
 
 def test_chacha_strings():
-    sc, sp = init()
+    sc, sp = common.init(unlock=True)
     for s in (sc, sp):
         for i, string in enumerate(chacha_strings):
             s.set(0x0301 + i, string)
@@ -79,7 +67,7 @@ def test_chacha_strings():
 
 
 def test_set_similar():
-    sc, sp = init()
+    sc, sp = common.init(unlock=True)
     for s in (sc, sp):
         s.set(0xBEEF, b"Satoshi")
         s.set(0xBEEF, b"satoshi")

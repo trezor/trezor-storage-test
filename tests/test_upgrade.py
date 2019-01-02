@@ -51,6 +51,6 @@ def test_upgrade():
 
     sc1 = StorageC()
     sc1._set_flash_buffer(sc0._get_flash_buffer())
-    sc1.init(common.uid)
+    sc1.init(common.test_uid)
     assert sc1.get_pin_rem() == 6
     check_values(sc1)

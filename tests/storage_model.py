@@ -1,6 +1,7 @@
 # Logical storage model used for testing.
 
-class Storage:
+
+class StorageModel:
     _EMPTY_PIN = 1
     _PIN_MAX_TRIES = 16
 
