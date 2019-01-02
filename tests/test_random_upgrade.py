@@ -6,7 +6,7 @@ from c0.storage import Storage as StorageC0
 from c.storage import Storage as StorageC
 
 from . import common
-from .storage import Storage as StorageModel
+from .storage_model import StorageModel
 
 
 class StorageComparison(RuleBasedStateMachine):
