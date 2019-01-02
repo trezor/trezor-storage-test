@@ -75,12 +75,14 @@ def test_set_similar():
 
     for s in (sc, sp):
         s.wipe()
+        s.unlock(1)
         s.set(0xBEEF, b"satoshi")
         s.set(0xBEEF, b"Satoshi")
     assert common.memory_equals(sc, sp)
 
     for s in (sc, sp):
         s.wipe()
+        s.unlock(1)
         s.set(0xBEEF, b"satoshi")
         s.set(0xBEEF, b"Satoshi")
         s.set(0xBEEF, b"Satoshi")

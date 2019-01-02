@@ -16,7 +16,6 @@ class Storage:
         self.pin_log = PinLog(self.nc)
 
     def init(self, hardware_salt: bytes = b"") -> None:
-        self.unlocked = False
         self.initialized = True
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
         # TODO check if EDEK already present?
@@ -27,6 +26,7 @@ class Storage:
         self.dek = prng.random_buffer(consts.DEK_SIZE)
         self._set_encrypt(consts.VERSION_KEY, b"\x01\x00\x00\x00")
         self._set_pin(consts.PIN_EMPTY)
+        self.unlocked = False
 
         self.pin_log.init()
 
@@ -70,7 +70,6 @@ class Storage:
         return is_valid
 
     def unlock(self, pin: int) -> bool:
-        self.unlocked = False
         if not self.initialized or not self.check_pin(pin):
             return False
 
@@ -84,6 +83,9 @@ class Storage:
     def has_pin(self) -> bool:
         val = self.nc.get(consts.PIN_NOT_SET_KEY)
         return val != consts.TRUE_BYTE
+
+    def get_pin_rem(self) -> int:
+        return consts.PIN_MAX_TRIES - self.pin_log.get_failures_count()
 
     def change_pin(self, oldpin: int, newpin: int) -> bool:
         if not self.initialized or not self.unlocked:
@@ -124,7 +126,7 @@ class Storage:
     def _set_encrypt(self, key: int, val: bytes):
         # In C data are preallocated beforehand for encrypted values,
         # to match the behaviour we do the same.
-        preallocate = b"\x00" * (
+        preallocate = b"\xFF" * (
             consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE
         )
         self.nc.set(key, preallocate)
