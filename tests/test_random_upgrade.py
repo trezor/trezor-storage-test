@@ -1,13 +1,12 @@
-import pytest
 import hypothesis.strategies as st
 from hypothesis import assume, settings
-from hypothesis.stateful import Bundle, RuleBasedStateMachine, rule, invariant
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, rule
 
-from c.storage import Storage as StorageC
 from c0.storage import Storage as StorageC0
-from .storage import Storage as StorageModel
+from c.storage import Storage as StorageC
 
 from . import common
+from .storage import Storage as StorageModel
 
 
 class StorageComparison(RuleBasedStateMachine):
@@ -20,34 +19,34 @@ class StorageComparison(RuleBasedStateMachine):
         self.storages = (self.sc, self.sm)
         self.ensure_unlocked()
 
-    keys = Bundle('keys')
-    values = Bundle('values')
-    pins = Bundle('pins')
- 
-    @rule(target = keys, app = st.integers(1, 0xFF), key = st.integers(0, 0xFF))
+    keys = Bundle("keys")
+    values = Bundle("values")
+    pins = Bundle("pins")
+
+    @rule(target=keys, app=st.integers(1, 0xFF), key=st.integers(0, 0xFF))
     def k(self, app, key):
         return (app << 8) | key
 
-    @rule(target = values, v = st.binary(min_size = 0, max_size = 10000))
+    @rule(target=values, v=st.binary(min_size=0, max_size=10000))
     def v(self, v):
         return v
 
-    @rule(target = pins, p = st.integers(1, 3))
+    @rule(target=pins, p=st.integers(1, 3))
     def p(self, p):
         return p
- 
-    @rule(k = keys, v = values)
+
+    @rule(k=keys, v=values)
     def set(self, k, v):
         assume(k != 0xFFFF)
         for s in self.storages:
             s.set(k, v)
 
-    @rule(p = pins)
+    @rule(p=pins)
     def check_pin(self, p):
         assert self.sm.unlock(p) == self.sc.check_pin(p)
         self.ensure_unlocked()
 
-    @rule(oldpin = pins, newpin = pins)
+    @rule(oldpin=pins, newpin=pins)
     def change_pin(self, oldpin, newpin):
         assert self.sm.change_pin(oldpin, newpin) == self.sc.change_pin(oldpin, newpin)
         self.ensure_unlocked()
@@ -67,6 +66,8 @@ class StorageComparison(RuleBasedStateMachine):
             for s in self.storages:
                 assert s.unlock(self.sm.pin)
 
-TestStorageComparison = StorageComparison.TestCase
-TestStorageComparison.settings = settings(deadline = None, max_examples = 30, stateful_step_count = 50)
 
+TestStorageComparison = StorageComparison.TestCase
+TestStorageComparison.settings = settings(
+    deadline=None, max_examples=30, stateful_step_count=50
+)
