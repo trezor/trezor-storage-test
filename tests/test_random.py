@@ -1,21 +1,73 @@
 import hypothesis.strategies as st
 import pytest
 from hypothesis import assume, given, settings
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, rule, invariant
 
+from .storage_model import StorageModel
 from . import common
 
 
-@pytest.mark.hypothesis
-@settings(deadline=250)
-@given(
-    st.integers(1, 0xFF), st.integers(0, 0xFF), st.binary(min_size=0, max_size=10000)
+class StorageComparison(RuleBasedStateMachine):
+    def __init__(self):
+        super(StorageComparison, self).__init__()
+        self.sc, self.sp = common.init(unlock=True)
+        self.sm = StorageModel()
+        self.sm.init(b"")
+        self.sm.unlock(1)
+        self.storages = (self.sc, self.sp, self.sm)
+
+    keys = Bundle("keys")
+    values = Bundle("values")
+    pins = Bundle("pins")
+
+    @rule(target=keys, app=st.integers(1, 0xFF), key=st.integers(0, 0xFF))
+    def k(self, app, key):
+        return (app << 8) | key
+
+    @rule(target=values, v=st.binary(min_size=0, max_size=10000))
+    def v(self, v):
+        return v
+
+    @rule(target=pins, p=st.integers(1, 3))
+    def p(self, p):
+        return p
+
+    @rule(k=keys, v=values)
+    def set(self, k, v):
+        assume(k != 0xFFFF)
+        for s in self.storages:
+            s.set(k, v)
+
+    @rule(p=pins)
+    def check_pin(self, p):
+        assert len(set(s.unlock(p) for s in self.storages)) == 1
+        self.ensure_unlocked()
+
+    @rule(oldpin=pins, newpin=pins)
+    def change_pin(self, oldpin, newpin):
+        assert len(set(s.change_pin(oldpin, newpin) for s in self.storages)) == 1
+        self.ensure_unlocked()
+
+    @invariant()
+    def values_agree(self):
+        for k, v in self.sm:
+            assert self.sc.get(k) == v
+
+    @invariant()
+    def dumps_agree(self):
+        assert self.sc._dump() == self.sp._dump()
+
+    @invariant()
+    def pin_counters_agree(self):
+        assert len(set(s.get_pin_rem() for s in self.storages)) == 1
+
+    def ensure_unlocked(self):
+        if not self.sm.unlocked:
+            for s in self.storages:
+                assert s.unlock(self.sm.pin)
+
+
+TestStorageComparison = StorageComparison.TestCase
+TestStorageComparison.settings = settings(
+    deadline=2000, max_examples=30, stateful_step_count=50
 )
-def test_set_get(app, key, data):
-    assume(not (app == 0xFF and key == 0xFF))
-    # TODO set random reseed?
-    sc, sp = common.init(unlock=True)
-    app_key = (app << 8) | key
-    for s in (sc, sp):
-        s.set(app_key, data)
-        assert s.get(app_key) == data
-    assert sc._dump() == sp._dump()

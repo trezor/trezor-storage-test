@@ -9,9 +9,9 @@ from . import common
 from .storage_model import StorageModel
 
 
-class StorageComparison(RuleBasedStateMachine):
+class StorageUpgrade(RuleBasedStateMachine):
     def __init__(self):
-        super(StorageComparison, self).__init__()
+        super(StorageUpgrade, self).__init__()
         self.sc = StorageC0()
         self.sc.init()
         self.sm = StorageModel()
@@ -67,7 +67,7 @@ class StorageComparison(RuleBasedStateMachine):
                 assert s.unlock(self.sm.pin)
 
 
-TestStorageComparison = StorageComparison.TestCase
-TestStorageComparison.settings = settings(
+TestStorageUpgrade = StorageUpgrade.TestCase
+TestStorageUpgrade.settings = settings(
     deadline=None, max_examples=30, stateful_step_count=50
 )
