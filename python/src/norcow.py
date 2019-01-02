@@ -29,12 +29,12 @@ class Norcow:
         value, _ = self._find_item(key)
         return value
 
-    def set(self, key: int, val: bytes) -> bool:
+    def set(self, key: int, val: bytes):
         if key == consts.NORCOW_KEY_FREE:
             raise RuntimeError("Norcow: key 0xFFFF is not allowed")
 
         found_value, pos = self._find_item(key)
-        if found_value:
+        if found_value != False:
             if self._is_updatable(found_value, val):
                 self._write(pos, key, val)
                 return
