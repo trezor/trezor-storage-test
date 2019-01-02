@@ -769,7 +769,7 @@ static void handle_fault()
     // If fault handling is already in progress, then we are probably facing a fault injection attack, so wipe.
     if (secfalse != in_progress) {
         storage_wipe();
-        for(;;);
+        ensure(secfalse, "fault detected");
     }
 
     // We use the PIN fail counter as a fault counter. Increment the counter, check that it was incremented and halt.
@@ -777,19 +777,19 @@ static void handle_fault()
     uint32_t ctr;
     if (sectrue != pin_get_fails(&ctr)) {
         storage_wipe();
-        for(;;);
+        ensure(secfalse, "fault detected");
     }
 
     if (sectrue != pin_fails_increase()) {
         storage_wipe();
-        for(;;);
+        ensure(secfalse, "fault detected");
     }
 
     uint32_t ctr_new;
     if (sectrue != pin_get_fails(&ctr_new) || ctr + 1 != ctr_new) {
         storage_wipe();
     }
-    for(;;);
+    ensure(secfalse, "fault detected");
 }
 
 /*
