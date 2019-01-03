@@ -34,7 +34,7 @@ class Norcow:
             raise RuntimeError("Norcow: key 0xFFFF is not allowed")
 
         found_value, pos = self._find_item(key)
-        if found_value != False:
+        if found_value is not False:
             if self._is_updatable(found_value, val):
                 self._write(pos, key, val)
                 return
