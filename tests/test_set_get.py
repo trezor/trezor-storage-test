@@ -66,6 +66,21 @@ def test_chacha_strings():
             assert s.get(0x0301 + i) == string
 
 
+def test_set_repeated():
+    test_strings = [[0x0501, b""], [0x0502, b"test"], [0x8501, b""], [0x8502, b"test"]]
+    sc, sp = common.init(unlock=True)
+    for s in (sc, sp):
+        for key, val in test_strings:
+            s.set(key, val)
+            s.set(key, val)
+    assert common.memory_equals(sc, sp)
+
+    for s in (sc, sp):
+        for key, val in test_strings:
+            s.set(key, val)
+    assert common.memory_equals(sc, sp)
+
+
 def test_set_similar():
     sc, sp = common.init(unlock=True)
     for s in (sc, sp):
