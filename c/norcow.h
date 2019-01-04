@@ -57,6 +57,11 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
 secbool norcow_set(uint16_t key, const void *val, uint16_t len);
 
 /*
+ * Deletes the given key, returns status of the operation.
+ */
+secbool norcow_delete(uint16_t key);
+
+/*
  * Update a word in flash in the given key at the given offset.
  * Note that you can only change bits from 1 to 0.
  */

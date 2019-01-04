@@ -36,8 +36,8 @@
 // The key value which is used to indicate that the entry is not set.
 #define NORCOW_KEY_FREE   (0xFFFF)
 
-// The key value which is used to indicate that the entry has been erased.
-#define NORCOW_KEY_ERASED (0x0000)
+// The key value which is used to indicate that the entry has been deleted.
+#define NORCOW_KEY_DELETED (0x0000)
 
 // The offset from the beginning of the sector where stored items start.
 #define NORCOW_STORAGE_START (NORCOW_HEADER_LEN + NORCOW_MAGIC_LEN + NORCOW_VERSION_LEN)
@@ -105,7 +105,7 @@ static secbool norcow_write(uint8_t sector, uint32_t offset, uint32_t prefix, co
 /*
  * Erases sector (and sets a magic)
  */
-static void norcow_erase(uint8_t sector, secbool set_magic)
+static void erase_sector(uint8_t sector, secbool set_magic)
 {
 #if NORCOW_HEADER_LEN > 0
     // Backup the sector header.
@@ -257,7 +257,7 @@ static void compact()
     }
 
     norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
-    norcow_erase(norcow_write_sector, sectrue);
+    erase_sector(norcow_write_sector, sectrue);
     uint32_t offsetw = NORCOW_STORAGE_START;
 
     for (;;) {
@@ -271,8 +271,8 @@ static void compact()
         }
         offsetr = posr;
 
-        // skip erased items
-        if (k == NORCOW_KEY_ERASED) {
+        // skip deleted items
+        if (k == NORCOW_KEY_DELETED) {
             continue;
         }
 
@@ -282,7 +282,7 @@ static void compact()
         offsetw = posw;
     }
 
-    norcow_erase(norcow_active_sector, secfalse);
+    erase_sector(norcow_active_sector, secfalse);
     norcow_active_sector = norcow_write_sector;
     norcow_active_version = NORCOW_VERSION;
     norcow_free_offset = find_free_offset(norcow_write_sector);
@@ -313,7 +313,7 @@ void norcow_init(uint32_t *norcow_version)
     } else if (*norcow_version < NORCOW_VERSION) {
         // Prepare write sector for storage upgrade.
         norcow_write_sector = (norcow_active_sector + 1) % NORCOW_SECTOR_COUNT;
-        norcow_erase(norcow_write_sector, sectrue);
+        erase_sector(norcow_write_sector, sectrue);
         norcow_free_offset = find_free_offset(norcow_write_sector);
     } else {
         norcow_write_sector = norcow_active_sector;
@@ -326,9 +326,9 @@ void norcow_init(uint32_t *norcow_version)
  */
 void norcow_wipe(void)
 {
-    norcow_erase(0, sectrue);
+    erase_sector(0, sectrue);
     for (uint8_t i = 1; i < NORCOW_SECTOR_COUNT; i++) {
-        norcow_erase(i, secfalse);
+        erase_sector(i, secfalse);
     }
     norcow_active_sector = 0;
     norcow_active_version = NORCOW_VERSION;
@@ -364,8 +364,8 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
         }
         *offset = pos;
 
-        // Skip erased items.
-        if (*key == NORCOW_KEY_ERASED) {
+        // Skip deleted items.
+        if (*key == NORCOW_KEY_DELETED) {
             continue;
         }
 
@@ -430,15 +430,15 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
 
     // If the update was not possible then write the entry as a new item.
     if (secfalse == ret) {
-        // Erase the old item.
+        // Delete the old item.
         if (sectrue == found) {
             ensure(flash_unlock(), NULL);
 
-            // Update the prefix to indicate that the old item has been erased.
+            // Update the prefix to indicate that the old item has been deleted.
             uint32_t prefix = len_old << 16;
             ensure(flash_write_word(sector_num, offset - NORCOW_PREFIX_LEN, prefix), NULL);
 
-            // Erase the old item data.
+            // Delete the old item data.
             uint32_t end = offset + len_old;
             while (offset < end) {
                 ensure(flash_write_word(sector_num, offset, 0x00000000), NULL);
@@ -459,6 +459,43 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
         }
     }
     return ret;
+}
+
+/*
+ * Deletes the given key, returns status of the operation.
+ */
+secbool norcow_delete(uint16_t key)
+{
+    // Key 0xffff is used as a marker to indicate that the entry is not set.
+    if (key == NORCOW_KEY_FREE) {
+        return secfalse;
+    }
+
+    const uint8_t sector_num = norcow_sectors[norcow_write_sector];
+    const void *ptr = NULL;
+    uint16_t len = 0;
+    if (sectrue != find_item(norcow_write_sector, key, &ptr, &len)) {
+        return secfalse;
+    }
+
+    uint32_t offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_write_sector, 0, NORCOW_SECTOR_SIZE);
+
+    ensure(flash_unlock(), NULL);
+
+    // Update the prefix to indicate that the item has been deleted.
+    uint32_t prefix = len << 16;
+    ensure(flash_write_word(sector_num, offset - NORCOW_PREFIX_LEN, prefix), NULL);
+
+    // Delete the item data.
+    uint32_t end = offset + len;
+    while (offset < end) {
+        ensure(flash_write_word(sector_num, offset, 0x00000000), NULL);
+        offset += NORCOW_WORD_SIZE;
+    }
+
+    ensure(flash_lock(), NULL);
+
+    return sectrue;
 }
 
 /*
@@ -510,7 +547,7 @@ secbool norcow_update_bytes(const uint16_t key, const uint16_t offset, const uin
  */
 secbool norcow_upgrade_finish()
 {
-    norcow_erase(norcow_active_sector, secfalse);
+    erase_sector(norcow_active_sector, secfalse);
     norcow_active_sector = norcow_write_sector;
     norcow_active_version = NORCOW_VERSION;
     return sectrue;

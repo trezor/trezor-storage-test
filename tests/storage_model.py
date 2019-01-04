@@ -52,5 +52,14 @@ class StorageModel:
         else:
             raise RuntimeError("Failed to set value in storage.")
 
+    def delete(self, key: int) -> bool:
+        if not self.unlocked:
+            return False
+        try:
+            self.dict.pop(key)
+        except KeyError:
+            return False
+        return True
+
     def __iter__(self):
         return iter(self.dict.items())

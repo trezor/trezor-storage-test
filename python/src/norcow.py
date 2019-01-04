@@ -39,12 +39,22 @@ class Norcow:
                 self._write(pos, key, val)
                 return
             else:
-                self._erase_old(pos, found_value)
+                self._delete_old(pos, found_value)
 
         if self.active_offset + 4 + len(val) > consts.NORCOW_SECTOR_SIZE:
             self._compact()
 
         self._append(key, val)
+
+    def delete(self, key: int):
+        if key == consts.NORCOW_KEY_FREE:
+            raise RuntimeError("Norcow: key 0xFFFF is not allowed")
+
+        found_value, pos = self._find_item(key)
+        if found_value is False:
+            return False
+        self._delete_old(pos, found_value)
+        return True
 
     def _is_updatable(self, old: bytes, new: bytes) -> bool:
         """
@@ -61,7 +71,7 @@ class Norcow:
                 return False
         return True
 
-    def _erase_old(self, pos: int, value: bytes):
+    def _delete_old(self, pos: int, value: bytes):
         wiped_data = b"\x00" * len(value)
         self._write(pos, 0x0000, wiped_data)
 

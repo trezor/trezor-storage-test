@@ -34,5 +34,6 @@ uint32_t storage_get_pin_rem(void);
 secbool storage_change_pin(const uint32_t oldpin, const uint32_t newpin);
 secbool storage_get(const uint16_t key, void *val, const uint16_t max_len, uint16_t *len);
 secbool storage_set(const uint16_t key, const void *val, uint16_t len);
+secbool storage_delete(const uint16_t key);
 
 #endif

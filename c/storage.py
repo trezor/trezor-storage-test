@@ -43,6 +43,9 @@ class Storage:
         if sectrue != self.lib.storage_set(c.c_uint16(key), val, c.c_uint16(len(val))):
             raise RuntimeError("Failed to set value in storage.")
 
+    def delete(self, key: int) -> bool:
+        return sectrue == self.lib.storage_delete(c.c_uint16(key))
+
     def _dump(self) -> bytes:
         # return just sectors 4 and 16 of the whole flash
         return [self.flash_buffer[0x010000:0x010000 + 0x10000], self.flash_buffer[0x110000:0x110000 + 0x10000]]

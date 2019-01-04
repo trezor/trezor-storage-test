@@ -38,6 +38,11 @@ class StorageComparison(RuleBasedStateMachine):
         for s in self.storages:
             s.set(k, v)
 
+    @rule(k=keys)
+    def delete(self, k):
+        assume(k != 0xFFFF)
+        assert len(set(s.delete(k) for s in self.storages)) == 1
+
     @rule(p=pins)
     def check_pin(self, p):
         assert len(set(s.unlock(p) for s in self.storages)) == 1

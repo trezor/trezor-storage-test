@@ -136,6 +136,12 @@ class Storage:
         )
         return self.nc.replace(key, iv + cipher_text + tag)
 
+    def delete(self, key: int) -> bool:
+        app = key >> 8
+        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
+            raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
+        return self.nc.delete(key)
+
     def _set_bool(self, key: int, val: bool) -> bool:
         if val:
             return self.nc.set(key, consts.TRUE_BYTE)

@@ -47,6 +47,15 @@ def test_set_get():
         assert datasc == sc._dump()
         assert datasp == sp._dump()
 
+    # test delete
+    for s in (sc, sp):
+        assert s.delete(0x0902)
+    assert common.memory_equals(sc, sp)
+
+    for s in (sc, sp):
+        assert not s.delete(0x7777)
+        assert not s.delete(0x0902)
+    assert common.memory_equals(sc, sp)
 
 def test_invalid_key():
     for s in common.init(unlock=True):
@@ -79,6 +88,11 @@ def test_set_repeated():
         for key, val in test_strings:
             s.set(key, val)
     assert common.memory_equals(sc, sp)
+
+    for key, val in test_strings:
+        for s in (sc, sp):
+            assert s.delete(key)
+        assert common.memory_equals(sc, sp)
 
 
 def test_set_similar():

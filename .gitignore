@@ -3,3 +3,4 @@ __pycache__
 *.o
 .hypothesis/*
 .hypothesis
+.mypy_cache
