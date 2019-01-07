@@ -163,7 +163,7 @@ static secbool read_item(uint8_t sector, uint32_t offset, uint16_t *key, const v
  */
 static secbool write_item(uint8_t sector, uint32_t offset, uint16_t key, const void *val, uint16_t len, uint32_t *pos)
 {
-    uint32_t prefix = (len << 16) | key;
+    uint32_t prefix = ((uint32_t)len << 16) | key;
     *pos = offset + NORCOW_PREFIX_LEN + len;
     ALIGN4(*pos);
     return norcow_write(sector, offset, prefix, val, len);
@@ -197,7 +197,7 @@ static secbool find_start_offset(uint8_t sector, uint32_t *offset, uint32_t *ver
  */
 static secbool find_item(uint8_t sector, uint16_t key, const void **val, uint16_t *len)
 {
-    *val = 0;
+    *val = NULL;
     *len = 0;
 
     uint32_t offset;
@@ -435,7 +435,7 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
             ensure(flash_unlock(), NULL);
 
             // Update the prefix to indicate that the old item has been deleted.
-            uint32_t prefix = len_old << 16;
+            uint32_t prefix = (uint32_t)len_old << 16;
             ensure(flash_write_word(sector_num, offset - NORCOW_PREFIX_LEN, prefix), NULL);
 
             // Delete the old item data.
@@ -483,7 +483,7 @@ secbool norcow_delete(uint16_t key)
     ensure(flash_unlock(), NULL);
 
     // Update the prefix to indicate that the item has been deleted.
-    uint32_t prefix = len << 16;
+    uint32_t prefix = (uint32_t)len << 16;
     ensure(flash_write_word(sector_num, offset - NORCOW_PREFIX_LEN, prefix), NULL);
 
     // Delete the item data.

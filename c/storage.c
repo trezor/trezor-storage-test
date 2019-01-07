@@ -176,9 +176,9 @@ static secbool set_pin(uint32_t pin)
     if (ret == sectrue)
     {
         if (pin == PIN_EMPTY) {
-            norcow_set(PIN_NOT_SET_KEY, &TRUE_BYTE, sizeof(TRUE_BYTE));
+            ret = norcow_set(PIN_NOT_SET_KEY, &TRUE_BYTE, sizeof(TRUE_BYTE));
         } else {
-            norcow_set(PIN_NOT_SET_KEY, &FALSE_BYTE, sizeof(FALSE_BYTE));
+            ret = norcow_set(PIN_NOT_SET_KEY, &FALSE_BYTE, sizeof(FALSE_BYTE));
         }
     }
 
@@ -275,9 +275,9 @@ static void init_wiped_storage()
 {
     random_buffer(cached_dek, DEK_SIZE);
     uint32_t version = NORCOW_VERSION;
-    storage_set_encrypted(VERSION_KEY, &version, sizeof(version));
-    set_pin(PIN_EMPTY);
-    pin_logs_init(0);
+    ensure(storage_set_encrypted(VERSION_KEY, &version, sizeof(version)), "failed to set storage version");
+    ensure(set_pin(PIN_EMPTY), "failed to initialize PIN");
+    ensure(pin_logs_init(0), "failed to initialize PIN logs");
     unlocked = secfalse;
     memzero(cached_dek, DEK_SIZE);
 }
@@ -503,7 +503,7 @@ static secbool unlock(uint32_t pin)
 
     // Check that the authenticated version number matches the norcow version.
     uint32_t version;
-    if (sectrue != storage_get_encrypted(VERSION_KEY, &version, sizeof(version), &len) || version != norcow_active_version) {
+    if (sectrue != storage_get_encrypted(VERSION_KEY, &version, sizeof(version), &len) || len != sizeof(version) || version != norcow_active_version) {
         handle_fault();
         return secfalse;
     }
@@ -589,7 +589,12 @@ static secbool storage_get_encrypted(const uint16_t key, void *val_dest, const u
 {
     const void *val_stored = NULL;
 
-    if (sectrue != norcow_get(key, &val_stored, len) || *len < CHACHA20_IV_SIZE + POLY1305_MAC_SIZE) {
+    if (sectrue != norcow_get(key, &val_stored, len)) {
+        return secfalse;
+    }
+
+    if (*len < CHACHA20_IV_SIZE + POLY1305_MAC_SIZE) {
+        handle_fault();
         return secfalse;
     }
     *len -= CHACHA20_IV_SIZE + POLY1305_MAC_SIZE;
@@ -617,6 +622,7 @@ static secbool storage_get_encrypted(const uint16_t key, void *val_dest, const u
     if (memcmp(mac_computed, mac_stored, POLY1305_MAC_SIZE) != 0) {
         memzero(val_dest, max_len);
         memzero(mac_computed, sizeof(mac_computed));
+        handle_fault();
         return secfalse;
     }
 
@@ -712,11 +718,13 @@ secbool storage_set(const uint16_t key, const void *val, const uint16_t len)
         return secfalse;
     }
 
+    secbool ret = secfalse;
     if ((app & FLAG_PUBLIC) != 0) {
-        return norcow_set(key, val, len);
+        ret = norcow_set(key, val, len);
     } else {
-        return storage_set_encrypted(key, val, len);
+        ret = storage_set_encrypted(key, val, len);
     }
+    return ret;
 }
 
 secbool storage_delete(const uint16_t key)
