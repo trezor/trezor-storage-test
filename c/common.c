@@ -17,15 +17,37 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __TREZORHAL_COMMON_H__
-#define __TREZORHAL_COMMON_H__
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include "secbool.h"
+#include "common.h"
 
-void __fatal_error(const char *expr, const char *msg, const char *file, int line, const char *func);
+void __shutdown(void)
+{
+    printf("SHUTDOWN\n");
+    exit(3);
+}
 
-#define ensure(expr, msg) (((expr) == sectrue) ? (void)0 : __fatal_error(#expr, msg, __FILE__, __LINE__, __func__))
+void __fatal_error(const char *expr, const char *msg, const char *file, int line, const char *func)
+{
+    // For testing do not treat pin_fails_check_max as a fatal error.
+    if (msg != NULL && strcmp(msg, "pin_fails_check_max") == 0) {
+        return;
+    }
 
-#define hal_delay(ms) (void)ms;
-
-#endif
+    printf("\nFATAL ERROR:\n");
+    if (expr) {
+        printf("expr: %s\n", expr);
+    }
+    if (msg) {
+        printf("msg : %s\n", msg);
+    }
+    if (file) {
+        printf("file: %s:%d\n", file, line);
+    }
+    if (func) {
+        printf("func: %s\n", func);
+    }
+    __shutdown();
+}
