@@ -57,6 +57,7 @@ def test_set_get():
         assert not s.delete(0x0902)
     assert common.memory_equals(sc, sp)
 
+
 def test_invalid_key():
     for s in common.init(unlock=True):
         with pytest.raises(RuntimeError):

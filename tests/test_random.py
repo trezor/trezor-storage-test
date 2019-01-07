@@ -1,10 +1,9 @@
 import hypothesis.strategies as st
-import pytest
-from hypothesis import assume, given, settings
-from hypothesis.stateful import Bundle, RuleBasedStateMachine, rule, invariant
+from hypothesis import assume, settings
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, rule
 
-from .storage_model import StorageModel
 from . import common
+from .storage_model import StorageModel
 
 
 class StorageComparison(RuleBasedStateMachine):
