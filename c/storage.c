@@ -278,8 +278,9 @@ static void init_wiped_storage()
     ensure(storage_set_encrypted(VERSION_KEY, &version, sizeof(version)), "failed to set storage version");
     ensure(set_pin(PIN_EMPTY), "failed to initialize PIN");
     ensure(pin_logs_init(0), "failed to initialize PIN logs");
-    unlocked = secfalse;
-    memzero(cached_dek, DEK_SIZE);
+    if (unlocked != sectrue) {
+        memzero(cached_dek, DEK_SIZE);
+    }
 }
 
 void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint16_t salt_len)
