@@ -24,6 +24,7 @@
 #include "storage.h"
 #include "pbkdf2.h"
 #include "sha2.h"
+#include "hmac.h"
 #include "rand.h"
 #include "memzero.h"
 #include "chacha20poly1305/rfc7539.h"
@@ -36,7 +37,7 @@
 // Norcow storage key of the PIN entry log and PIN success log.
 #define PIN_LOGS_KEY        ((APP_STORAGE << 8) | 0x01)
 
-// Norcow storage key of the combined salt, EDEK and PIN verification code entry.
+// Norcow storage key of the combined salt, EDEK, ESAK and PIN verification code entry.
 #define EDEK_PVC_KEY        ((APP_STORAGE << 8) | 0x02)
 
 // Norcow storage key of the PIN set flag.
@@ -44,6 +45,9 @@
 
 // Norcow storage key of the storage version.
 #define VERSION_KEY         ((APP_STORAGE << 8) | 0x04)
+
+// Norcow storage key of the storage authentication tag.
+#define STORAGE_TAG_KEY     ((APP_STORAGE << 8) | 0x05)
 
 // The PIN value corresponding to an empty PIN.
 #define PIN_EMPTY           1
@@ -76,6 +80,12 @@
 // The length of the data encryption key in bytes.
 #define DEK_SIZE            32
 
+// The length of the storage authentication key in bytes.
+#define SAK_SIZE            32
+
+// The combined length of the data encryption key and the storage authentication key in bytes.
+#define KEYS_SIZE           (DEK_SIZE + SAK_SIZE)
+
 // The length of the PIN verification code in bytes.
 #define PVC_SIZE            8
 
@@ -95,7 +105,9 @@
 static secbool initialized = secfalse;
 static secbool unlocked = secfalse;
 static PIN_UI_WAIT_CALLBACK ui_callback = NULL;
-static uint8_t cached_dek[DEK_SIZE] = {0};
+static uint8_t cached_keys[KEYS_SIZE] = {0};
+static uint8_t *const cached_dek = cached_keys;
+static uint8_t *const cached_sak = cached_keys + DEK_SIZE;
 static uint8_t hardware_salt[HARDWARE_SALT_SIZE] = {0};
 static uint32_t norcow_active_version = 0;
 static const uint8_t TRUE_BYTE = 0x01;
@@ -154,10 +166,10 @@ static void derive_kek(uint32_t pin, const uint8_t *random_salt, uint8_t kek[SHA
 
 static secbool set_pin(uint32_t pin)
 {
-    uint8_t buffer[RANDOM_SALT_SIZE + DEK_SIZE + POLY1305_MAC_SIZE];
+    uint8_t buffer[RANDOM_SALT_SIZE + KEYS_SIZE + POLY1305_MAC_SIZE];
     uint8_t *salt = buffer;
-    uint8_t *edek = buffer + RANDOM_SALT_SIZE;
-    uint8_t *pvc = buffer + RANDOM_SALT_SIZE + DEK_SIZE;
+    uint8_t *ekeys = buffer + RANDOM_SALT_SIZE;
+    uint8_t *pvc = buffer + RANDOM_SALT_SIZE + KEYS_SIZE;
 
     uint8_t kek[SHA256_DIGEST_LENGTH];
     uint8_t keiv[SHA256_DIGEST_LENGTH];
@@ -167,10 +179,10 @@ static secbool set_pin(uint32_t pin)
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
     memzero(keiv, sizeof(keiv));
-    chacha20poly1305_encrypt(&ctx, cached_dek, edek, DEK_SIZE);
-    rfc7539_finish(&ctx, 0, DEK_SIZE, pvc);
+    chacha20poly1305_encrypt(&ctx, cached_keys, ekeys, KEYS_SIZE);
+    rfc7539_finish(&ctx, 0, KEYS_SIZE, pvc);
     memzero(&ctx, sizeof(ctx));
-    secbool ret = norcow_set(EDEK_PVC_KEY, buffer, RANDOM_SALT_SIZE + DEK_SIZE + PVC_SIZE);
+    secbool ret = norcow_set(EDEK_PVC_KEY, buffer, RANDOM_SALT_SIZE + KEYS_SIZE + PVC_SIZE);
     memzero(buffer, sizeof(buffer));
 
     if (ret == sectrue)
@@ -273,13 +285,13 @@ static secbool pin_logs_init(uint32_t fails)
  */
 static void init_wiped_storage()
 {
-    random_buffer(cached_dek, DEK_SIZE);
+    random_buffer(cached_keys, sizeof(cached_keys));
     uint32_t version = NORCOW_VERSION;
     ensure(storage_set_encrypted(VERSION_KEY, &version, sizeof(version)), "failed to set storage version");
     ensure(set_pin(PIN_EMPTY), "failed to initialize PIN");
     ensure(pin_logs_init(0), "failed to initialize PIN logs");
     if (unlocked != sectrue) {
-        memzero(cached_dek, DEK_SIZE);
+        memzero(cached_keys, sizeof(cached_keys));
     }
 }
 
@@ -300,13 +312,13 @@ void storage_init(PIN_UI_WAIT_CALLBACK callback, const uint8_t *salt, const uint
         }
     }
 
-    // If there is no EDEK, then generate a random DEK and store it.
+    // If there is no EDEK, then generate a random DEK and SAK and store them.
     const void *val;
     uint16_t len;
     if (secfalse == norcow_get(EDEK_PVC_KEY, &val, &len)) {
         init_wiped_storage();
     }
-    memzero(cached_dek, DEK_SIZE);
+    memzero(cached_keys, sizeof(cached_keys));
 }
 
 static secbool pin_fails_reset()
@@ -469,37 +481,37 @@ static secbool unlock(uint32_t pin)
 {
     const void *buffer = NULL;
     uint16_t len = 0;
-    if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != RANDOM_SALT_SIZE + DEK_SIZE + PVC_SIZE) {
+    if (sectrue != initialized || sectrue != norcow_get(EDEK_PVC_KEY, &buffer, &len) || len != RANDOM_SALT_SIZE + KEYS_SIZE + PVC_SIZE) {
         memzero(&pin, sizeof(pin));
         return secfalse;
     }
 
     const uint8_t *salt = (const uint8_t*) buffer;
-    const uint8_t *edek = (const uint8_t*) buffer + RANDOM_SALT_SIZE;
-    const uint8_t *pvc  = (const uint8_t*) buffer + RANDOM_SALT_SIZE + DEK_SIZE;
+    const uint8_t *ekeys = (const uint8_t*) buffer + RANDOM_SALT_SIZE;
+    const uint8_t *pvc  = (const uint8_t*) buffer + RANDOM_SALT_SIZE + KEYS_SIZE;
     uint8_t kek[SHA256_DIGEST_LENGTH];
     uint8_t keiv[SHA256_DIGEST_LENGTH];
-    uint8_t dek[DEK_SIZE];
+    uint8_t keys[KEYS_SIZE];
     uint8_t mac[POLY1305_MAC_SIZE];
     chacha20poly1305_ctx ctx;
 
-    // Decrypt the data encryption key and check the PIN verification code.
+    // Decrypt the data encryption key and the storage authentication key and check the PIN verification code.
     derive_kek(pin, salt, kek, keiv);
     memzero(&pin, sizeof(pin));
     rfc7539_init(&ctx, kek, keiv);
     memzero(kek, sizeof(kek));
     memzero(keiv, sizeof(keiv));
-    chacha20poly1305_decrypt(&ctx, edek, dek, DEK_SIZE);
-    rfc7539_finish(&ctx, 0, DEK_SIZE, mac);
+    chacha20poly1305_decrypt(&ctx, ekeys, keys, KEYS_SIZE);
+    rfc7539_finish(&ctx, 0, KEYS_SIZE, mac);
     memzero(&ctx, sizeof(ctx));
     wait_random();
     if (memcmp(mac, pvc, PVC_SIZE) != 0) {
-        memzero(dek, sizeof(dek));
+        memzero(keys, sizeof(keys));
         memzero(mac, sizeof(mac));
         return secfalse;
     }
-    memcpy(cached_dek, dek, sizeof(dek));
-    memzero(dek, sizeof(dek));
+    memcpy(cached_keys, keys, sizeof(keys));
+    memzero(keys, sizeof(keys));
     memzero(mac, sizeof(mac));
 
     // Check that the authenticated version number matches the norcow version.
@@ -855,7 +867,7 @@ static secbool storage_upgrade()
     const void *val = NULL;
 
     if (norcow_active_version == 0) {
-        random_buffer(cached_dek, DEK_SIZE);
+        random_buffer(cached_keys, sizeof(cached_keys));
 
         // Set the new storage version number.
         uint32_t version = NORCOW_VERSION;
@@ -895,7 +907,7 @@ static secbool storage_upgrade()
         }
 
         unlocked = secfalse;
-        memzero(cached_dek, DEK_SIZE);
+        memzero(cached_keys, sizeof(cached_keys));
     } else {
         return secfalse;
     }
