@@ -97,12 +97,12 @@ class Storage:
 
     def get(self, key: int) -> bytes:
         app = key >> 8
-        if not self.initialized or app == consts.PIN_APP_ID:
-            raise RuntimeError("Storage not initialized or app = 0 (PIN)")
-        if not self.unlocked and not (app & consts.FLAG_PUBLIC):
+        if not self.initialized or consts.is_app_private(app):
+            raise RuntimeError("Storage not initialized or app is private (0 = PIN)")
+        if not self.unlocked and not consts.is_app_public(app):
             # public fields can be read from an unlocked device
             raise RuntimeError("Storage locked")
-        if app & consts.FLAG_PUBLIC:
+        if consts.is_app_public(app):
             return self.nc.get(key)
         return self.get_encrypt(key)
 
@@ -117,9 +117,9 @@ class Storage:
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
-        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
-            raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
-        if app & consts.FLAG_PUBLIC:
+        if not self.initialized or not self.unlocked or consts.is_app_private(app):
+            raise RuntimeError("Storage not initialized or locked or is private (0 = PIN)")
+        if consts.is_app_public(app):
             return self.nc.set(key, val)
         return self._set_encrypt(key, val)
 
@@ -138,8 +138,8 @@ class Storage:
 
     def delete(self, key: int) -> bool:
         app = key >> 8
-        if not self.initialized or not self.unlocked or app == consts.PIN_APP_ID:
-            raise RuntimeError("Storage not initialized or locked or app = 0 (PIN)")
+        if not self.initialized or not self.unlocked or consts.is_app_private(app):
+            raise RuntimeError("Storage not initialized or locked or is private (0 = PIN)")
         return self.nc.delete(key)
 
     def _set_bool(self, key: int, val: bool) -> bool:

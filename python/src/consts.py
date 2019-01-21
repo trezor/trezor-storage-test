@@ -102,3 +102,26 @@ NORCOW_MAGIC_AND_VERSION = NORCOW_MAGIC + bytes(
 
 # Signalizes free storage.
 NORCOW_KEY_FREE = 0xFFFF
+
+
+# |-----------|-------------------|
+# | Private   | APP = 0           |
+# | Protected | 1 <= APP <= 127   |
+# | Public    | 128 <= APP <= 255 |
+#
+def is_app_public(app: int):
+    if app & FLAG_PUBLIC:
+        return True
+    return False
+
+
+def is_app_protected(app: int):
+    if is_app_public(app):
+        return False
+    if is_app_private(app):
+        return False
+    return True
+
+
+def is_app_private(app: int):
+    return app == PIN_APP_ID
