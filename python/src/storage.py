@@ -162,7 +162,11 @@ class Storage:
         app = key >> 8
         if not self.initialized or not self.unlocked or consts.is_app_private(app):
             raise RuntimeError("Storage not initialized or locked or app is private")
-        return self.nc.delete(key)
+        ret = self.nc.delete(key)
+        if consts.is_app_protected(app):
+            sat = self._calculate_authentication_tag()
+            self.nc.set(consts.SAT_KEY, sat)
+        return ret
 
     def _calculate_authentication_tag(self):
         keys = []
