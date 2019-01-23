@@ -151,7 +151,7 @@ static secbool is_protected(uint16_t key) {
  */
 static secbool auth_init() {
     uint8_t tag[SHA256_DIGEST_LENGTH];
-    memset(authentication_sum, 0, sizeof(authentication_sum));
+    memzero(authentication_sum, sizeof(authentication_sum));
     hmac_sha256(cached_sak, SAK_SIZE, authentication_sum, sizeof(authentication_sum), tag);
     return norcow_set(STORAGE_TAG_KEY, tag, STORAGE_TAG_SIZE);
 }
@@ -964,7 +964,7 @@ void storage_wipe(void)
 {
     norcow_wipe();
     norcow_active_version = NORCOW_VERSION;
-    memset(authentication_sum, 0, sizeof(authentication_sum));
+    memzero(authentication_sum, sizeof(authentication_sum));
     memzero(cached_keys, sizeof(cached_keys));
     init_wiped_storage();
 }
