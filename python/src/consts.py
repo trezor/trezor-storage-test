@@ -30,6 +30,9 @@ DEK_SIZE = 32
 # The length of the storage authentication key in bytes.
 SAK_SIZE = 16
 
+# The length of the storage authentication tag in bytes.
+SAT_SIZE = 16
+
 # The length of the random salt in bytes.
 PIN_SALT_SIZE = 4
 PIN_HARDWARE_SALT_SIZE = 32

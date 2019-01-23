@@ -27,10 +27,10 @@ class Storage:
         self.dek = prng.random_buffer(consts.DEK_SIZE)
         self.sak = prng.random_buffer(consts.SAK_SIZE)
 
+        self.nc.set(consts.SAT_KEY, crypto.init_hmacs(self.sak))
         self._set_encrypt(consts.VERSION_KEY, b"\x01\x00\x00\x00")
         self._set_pin(consts.PIN_EMPTY)
         self.unlocked = False
-        self.nc.set(consts.SAT_KEY, crypto.init_hmacs(self.sak))
 
         self.pin_log.init()
 
