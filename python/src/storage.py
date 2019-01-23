@@ -11,6 +11,7 @@ class Storage:
         self.initialized = False
         self.unlocked = False
         self.dek = None
+        self.sak = None
         self.nc = Norcow()
         self.nc.init()
         self.pin_log = PinLog(self.nc)
@@ -24,9 +25,12 @@ class Storage:
     def _init_pin(self):
         # generate random Data Encryption Key
         self.dek = prng.random_buffer(consts.DEK_SIZE)
+        self.sak = prng.random_buffer(consts.SAK_SIZE)
+
         self._set_encrypt(consts.VERSION_KEY, b"\x01\x00\x00\x00")
         self._set_pin(consts.PIN_EMPTY)
         self.unlocked = False
+        self.nc.set(consts.SAT_KEY, crypto.init_hmacs(self.sak))
 
         self.pin_log.init()
 
@@ -35,12 +39,12 @@ class Storage:
         salt = self.hw_salt_hash + random_salt
         kek, keiv = crypto.derive_kek_keiv(salt, pin)
 
-        # Encrypted Data Encryption Key
-        edek, tag = crypto.chacha_poly_encrypt(kek, keiv, self.dek)
+        # Encrypted Data Encryption Key and Encrypted Storage Authentication Key
+        edek_esak, tag = crypto.chacha_poly_encrypt(kek, keiv, self.dek + self.sak)
         # Pin Verification Code
         pvc = tag[: consts.PVC_SIZE]
 
-        self.nc.set(consts.EDEK_PVC_KEY, random_salt + edek + pvc)
+        self.nc.set(consts.EDEK_PVC_KEY, random_salt + edek_esak + pvc)
         if pin == consts.PIN_EMPTY:
             self._set_bool(consts.PIN_NOT_SET_KEY, True)
         else:
@@ -55,9 +59,13 @@ class Storage:
 
         data = self.nc.get(consts.EDEK_PVC_KEY)
         salt = self.hw_salt_hash + data[: consts.PIN_SALT_SIZE]
-        edek = data[consts.PIN_SALT_SIZE : consts.PIN_SALT_SIZE + consts.DEK_SIZE]
-        pvc = data[consts.PIN_SALT_SIZE + consts.DEK_SIZE :]
-        is_valid = crypto.validate_pin(pin, salt, edek, pvc)
+        edek_esak = data[
+            consts.PIN_SALT_SIZE : consts.PIN_SALT_SIZE
+            + consts.DEK_SIZE
+            + consts.SAK_SIZE
+        ]
+        pvc = data[consts.PIN_SALT_SIZE + consts.DEK_SIZE + consts.SAK_SIZE :]
+        is_valid = crypto.validate_pin(pin, salt, edek_esak, pvc)
 
         if is_valid:
             self.pin_log.write_success()
@@ -73,7 +81,7 @@ class Storage:
         if not self.initialized or not self.check_pin(pin):
             return False
 
-        version = self.get_encrypt(consts.VERSION_KEY)
+        version = self._decrypt(consts.VERSION_KEY)
         if version != consts.NORCOW_VERSION:
             return False
 
@@ -98,15 +106,25 @@ class Storage:
     def get(self, key: int) -> bytes:
         app = key >> 8
         if not self.initialized or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized or app is private (0 = PIN)")
+            raise RuntimeError("Storage not initialized or app is private")
         if not self.unlocked and not consts.is_app_public(app):
             # public fields can be read from an unlocked device
             raise RuntimeError("Storage locked")
         if consts.is_app_public(app):
             return self.nc.get(key)
-        return self.get_encrypt(key)
+        return self._get_encrypted(key)
 
-    def get_encrypt(self, key: int) -> bytes:
+    def _get_encrypted(self, key: int) -> bytes:
+        if not consts.is_app_protected(key):
+            raise RuntimeError("Only protected values are encrypted")
+        sat = self.nc.get(consts.SAT_KEY)
+        if not sat:
+            raise RuntimeError("SAT not found")
+        if sat != self._calculate_authentication_tag():
+            raise RuntimeError("Storage authentication tag mismatch")
+        return self._decrypt(key)
+
+    def _decrypt(self, key: int) -> bytes:
         data = self.nc.get(key)
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
@@ -118,7 +136,7 @@ class Storage:
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
         if not self.initialized or not self.unlocked or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized or locked or is private (0 = PIN)")
+            raise RuntimeError("Storage not initialized, locked or app is private")
         if consts.is_app_public(app):
             return self.nc.set(key, val)
         return self._set_encrypt(key, val)
@@ -130,6 +148,10 @@ class Storage:
             consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE
         )
         self.nc.set(key, preallocate)
+        if consts.is_app_protected(key >> 8):
+            sat = self._calculate_authentication_tag()
+            self.nc.set(consts.SAT_KEY, sat)
+
         iv = prng.random_buffer(consts.CHACHA_IV_SIZE)
         cipher_text, tag = crypto.chacha_poly_encrypt(
             self.dek, iv, val, key.to_bytes(2, sys.byteorder)
@@ -139,8 +161,17 @@ class Storage:
     def delete(self, key: int) -> bool:
         app = key >> 8
         if not self.initialized or not self.unlocked or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized or locked or is private (0 = PIN)")
+            raise RuntimeError("Storage not initialized or locked or app is private")
         return self.nc.delete(key)
+
+    def _calculate_authentication_tag(self):
+        keys = []
+        for key in self.nc._get_all_keys():
+            if consts.is_app_protected(key >> 8):
+                keys.append(key.to_bytes(2, sys.byteorder))
+        if not keys:
+            return crypto.init_hmacs(self.sak)
+        return crypto.calculate_hmacs(self.sak, keys)
 
     def _set_bool(self, key: int, val: bool) -> bool:
         if val:

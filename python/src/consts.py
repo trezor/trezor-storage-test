@@ -3,7 +3,7 @@
 # App ID where PIN log is stored.
 PIN_APP_ID = 0x00
 
-# Storage key of the combined salt, EDEK and PIN verification code entry.
+# Storage key of the combined salt, EDEK, ESEK and PIN verification code entry.
 EDEK_PVC_KEY = (PIN_APP_ID << 8) | 0x02
 
 # Storage key of the PIN set flag.
@@ -11,6 +11,9 @@ PIN_NOT_SET_KEY = (PIN_APP_ID << 8) | 0x03
 
 # Norcow storage key of the storage version.
 VERSION_KEY = (PIN_APP_ID << 8) | 0x04
+
+# Norcow storage key of the storage authentication tag.
+SAT_KEY = (PIN_APP_ID << 8) | 0x05
 
 # The PIN value corresponding to an empty PIN.
 PIN_EMPTY = 1
@@ -23,6 +26,9 @@ PIN_ITER_COUNT = 20000
 
 # The length of the data encryption key in bytes.
 DEK_SIZE = 32
+
+# The length of the storage authentication key in bytes.
+SAK_SIZE = 16
 
 # The length of the random salt in bytes.
 PIN_SALT_SIZE = 4

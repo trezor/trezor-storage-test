@@ -1,5 +1,5 @@
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -58,3 +58,29 @@ def validate_pin(pin: int, salt: bytes, edek: bytes, pvc: bytes):
 
     _, tag = chacha_poly_encrypt(kek, keiv, dek)
     return tag[: consts.PVC_SIZE] == pvc
+
+
+def calculate_hmacs(sak, keys) -> bytes:
+    """
+    This calculates HMAC-SHA-256(SAK, (XOR_i) HMAC-SHA-256(SAK, KEY_i)).
+    In other words, it does HMAC for every KEY and XORs it all together.
+    One more final HMAC is then performed on the result.
+    """
+    hmacs = _hmac(sak, keys[0])
+    for key in keys[1:]:
+        hmacs = _xor(hmacs, _hmac(sak, key))
+    return _hmac(sak, hmacs)
+
+
+def init_hmacs(sak: bytes) -> bytes:
+    return _hmac(sak, b"\x00" * hashes.SHA256.digest_size)
+
+
+def _hmac(key: bytes, data: bytes) -> bytes:
+    h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
+    h.update(data)
+    return h.finalize()
+
+
+def _xor(first: bytes, second: bytes) -> bytes:
+    return bytes(a ^ b for a, b in zip(first, second))

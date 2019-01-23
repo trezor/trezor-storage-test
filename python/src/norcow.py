@@ -110,6 +110,18 @@ class Norcow:
             offset = offset + self._norcow_item_length(v)
         return value, pos
 
+    def _get_all_keys(self) -> (bytes, int):
+        offset = len(consts.NORCOW_MAGIC_AND_VERSION)
+        keys = set()
+        while True:
+            try:
+                k, v = self._read_item(offset)
+                keys.add(k)
+            except ValueError:
+                break
+            offset = offset + self._norcow_item_length(v)
+        return keys
+
     def _norcow_item_length(self, data: bytes) -> int:
         # APP_ID, KEY_ID, LENGTH, DATA, ALIGNMENT
         return 1 + 1 + 2 + len(data) + align4_int(len(data))
