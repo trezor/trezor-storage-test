@@ -79,7 +79,7 @@ def init_hmacs(sak: bytes) -> bytes:
 def _hmac(key: bytes, data: bytes) -> bytes:
     h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
     h.update(data)
-    return h.finalize()
+    return h.finalize()[:consts.SAT_SIZE]
 
 
 def _xor(first: bytes, second: bytes) -> bytes:
