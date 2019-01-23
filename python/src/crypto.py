@@ -69,17 +69,17 @@ def calculate_hmacs(sak, keys) -> bytes:
     hmacs = _hmac(sak, keys[0])
     for key in keys[1:]:
         hmacs = _xor(hmacs, _hmac(sak, key))
-    return _hmac(sak, hmacs)
+    return _hmac(sak, hmacs)[: consts.SAT_SIZE]
 
 
 def init_hmacs(sak: bytes) -> bytes:
-    return _hmac(sak, b"\x00" * hashes.SHA256.digest_size)
+    return _hmac(sak, b"\x00" * hashes.SHA256.digest_size)[: consts.SAT_SIZE]
 
 
 def _hmac(key: bytes, data: bytes) -> bytes:
     h = hmac.HMAC(key, hashes.SHA256(), backend=default_backend())
     h.update(data)
-    return h.finalize()[:consts.SAT_SIZE]
+    return h.finalize()
 
 
 def _xor(first: bytes, second: bytes) -> bytes:
