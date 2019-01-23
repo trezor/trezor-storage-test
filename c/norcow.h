@@ -55,6 +55,7 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
  * then be written using norcow_update_bytes().
  */
 secbool norcow_set(uint16_t key, const void *val, uint16_t len);
+secbool norcow_set_ex(uint16_t key, const void *val, uint16_t len, secbool *found);
 
 /*
  * Deletes the given key, returns status of the operation.

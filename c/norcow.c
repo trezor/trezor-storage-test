@@ -400,6 +400,12 @@ secbool norcow_get_next(uint32_t *offset, uint16_t *key, const void **val, uint1
  */
 secbool norcow_set(uint16_t key, const void *val, uint16_t len)
 {
+    secbool found;
+    return norcow_set_ex(key, val, len, &found);
+}
+
+secbool norcow_set_ex(uint16_t key, const void *val, uint16_t len, secbool *found)
+{
     // Key 0xffff is used as a marker to indicate that the entry is not set.
     if (key == NORCOW_KEY_FREE) {
         return secfalse;
@@ -409,11 +415,11 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
     secbool ret = secfalse;
     const void *ptr = NULL;
     uint16_t len_old = 0;
-    secbool found = find_item(norcow_write_sector, key, &ptr, &len_old);
+    *found = find_item(norcow_write_sector, key, &ptr, &len_old);
 
     // Try to update the entry if it already exists.
     uint32_t offset = 0;
-    if (sectrue == found) {
+    if (sectrue == *found) {
         offset = (const uint8_t*) ptr - (const uint8_t *)norcow_ptr(norcow_write_sector, 0, NORCOW_SECTOR_SIZE);
         if (val != NULL && len_old == len) {
             ret = sectrue;
@@ -431,7 +437,7 @@ secbool norcow_set(uint16_t key, const void *val, uint16_t len)
     // If the update was not possible then write the entry as a new item.
     if (secfalse == ret) {
         // Delete the old item.
-        if (sectrue == found) {
+        if (sectrue == *found) {
             ensure(flash_unlock(), NULL);
 
             // Update the prefix to indicate that the old item has been deleted.
