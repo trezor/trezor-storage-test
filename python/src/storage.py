@@ -59,12 +59,8 @@ class Storage:
 
         data = self.nc.get(consts.EDEK_PVC_KEY)
         salt = self.hw_salt_hash + data[: consts.PIN_SALT_SIZE]
-        edek_esak = data[
-            consts.PIN_SALT_SIZE : consts.PIN_SALT_SIZE
-            + consts.DEK_SIZE
-            + consts.SAK_SIZE
-        ]
-        pvc = data[consts.PIN_SALT_SIZE + consts.DEK_SIZE + consts.SAK_SIZE :]
+        edek_esak = data[consts.PIN_SALT_SIZE : -consts.PVC_SIZE]
+        pvc = data[-consts.PVC_SIZE :]
         is_valid = crypto.validate_pin(pin, salt, edek_esak, pvc)
 
         if is_valid:
