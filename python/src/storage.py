@@ -16,14 +16,21 @@ class Storage:
         self.nc.init()
         self.pin_log = PinLog(self.nc)
 
-    def init(self, hardware_salt: bytes = b"") -> None:
+    def init(self, hardware_salt: bytes = b""):
+        """
+        Initializes storage. Normally we would check if EDEK is already present,
+        but we simplify things in the python version and suppose we are starting
+        a new storage each time.
+        """
         self.initialized = True
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
-        # TODO check if EDEK already present?
         self._init_pin()
 
     def _init_pin(self):
-        # generate random Data Encryption Key
+        """
+        Initalizes PIN counters, generates random
+        Data Encryption Key and Storage Authentication Key
+        """
         self.dek = prng.random_buffer(consts.DEK_SIZE)
         self.sak = prng.random_buffer(consts.SAK_SIZE)
 
@@ -50,7 +57,7 @@ class Storage:
         else:
             self._set_bool(consts.PIN_NOT_SET_KEY, False)
 
-    def wipe(self) -> None:
+    def wipe(self):
         self.nc.wipe()
         self._init_pin()
 
@@ -65,7 +72,6 @@ class Storage:
 
         if is_valid:
             self.pin_log.write_success()
-
         else:
             fails = self.pin_log.get_failures_count()
             if fails >= consts.PIN_MAX_TRIES:
@@ -110,6 +116,24 @@ class Storage:
             return self.nc.get(key)
         return self._get_encrypted(key)
 
+    def set(self, key: int, val: bytes) -> bool:
+        app = key >> 8
+        if not self.initialized or not self.unlocked or consts.is_app_private(app):
+            raise RuntimeError("Storage not initialized, locked or app is private")
+        if consts.is_app_public(app):
+            return self.nc.set(key, val)
+        return self._set_encrypt(key, val)
+
+    def delete(self, key: int) -> bool:
+        app = key >> 8
+        if not self.initialized or not self.unlocked or consts.is_app_private(app):
+            raise RuntimeError("Storage not initialized or locked or app is private")
+        ret = self.nc.delete(key)
+        if consts.is_app_protected(app):
+            sat = self._calculate_authentication_tag()
+            self.nc.set(consts.SAT_KEY, sat)
+        return ret
+
     def _get_encrypted(self, key: int) -> bytes:
         if not consts.is_app_protected(key):
             raise RuntimeError("Only protected values are encrypted")
@@ -129,16 +153,8 @@ class Storage:
             self.dek, key, iv, chacha_input, key.to_bytes(2, sys.byteorder)
         )
 
-    def set(self, key: int, val: bytes) -> bool:
-        app = key >> 8
-        if not self.initialized or not self.unlocked or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized, locked or app is private")
-        if consts.is_app_public(app):
-            return self.nc.set(key, val)
-        return self._set_encrypt(key, val)
-
     def _set_encrypt(self, key: int, val: bytes):
-        # In C data are preallocated beforehand for encrypted values,
+        # In C, data are preallocated beforehand for encrypted values,
         # to match the behaviour we do the same.
         preallocate = b"\xFF" * (
             consts.CHACHA_IV_SIZE + len(val) + consts.POLY1305_MAC_SIZE
@@ -154,17 +170,7 @@ class Storage:
         )
         return self.nc.replace(key, iv + cipher_text + tag)
 
-    def delete(self, key: int) -> bool:
-        app = key >> 8
-        if not self.initialized or not self.unlocked or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized or locked or app is private")
-        ret = self.nc.delete(key)
-        if consts.is_app_protected(app):
-            sat = self._calculate_authentication_tag()
-            self.nc.set(consts.SAT_KEY, sat)
-        return ret
-
-    def _calculate_authentication_tag(self):
+    def _calculate_authentication_tag(self) -> bytes:
         keys = []
         for key in self.nc._get_all_keys():
             if consts.is_app_protected(key >> 8):

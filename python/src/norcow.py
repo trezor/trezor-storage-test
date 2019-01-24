@@ -56,6 +56,16 @@ class Norcow:
         self._delete_old(pos, found_value)
         return True
 
+    def replace(self, key: int, new_value: bytes) -> bool:
+        old_value, offset = self._find_item(key)
+        if not old_value:
+            raise RuntimeError("Norcow: key not found")
+        if len(old_value) != len(new_value):
+            raise RuntimeError(
+                "Norcow: replace works only with items of the same length"
+            )
+        self._write(offset, key, new_value)
+
     def _is_updatable(self, old: bytes, new: bytes) -> bool:
         """
         Item is updatable if the new value is the same or
@@ -74,16 +84,6 @@ class Norcow:
     def _delete_old(self, pos: int, value: bytes):
         wiped_data = b"\x00" * len(value)
         self._write(pos, 0x0000, wiped_data)
-
-    def replace(self, key: int, new_value: bytes) -> bool:
-        old_value, offset = self._find_item(key)
-        if not old_value:
-            raise RuntimeError("Norcow: key not found")
-        if len(old_value) != len(new_value):
-            raise RuntimeError(
-                "Norcow: replace works only with items of the same length"
-            )
-        self._write(offset, key, new_value)
 
     def _append(self, key: int, value: bytes):
         self.active_offset += self._write(self.active_offset, key, value)
@@ -136,9 +136,6 @@ class Norcow:
         value = self.sectors[self.active_sector][offset + 4 : offset + 4 + length]
         return key, value
 
-    def _dump(self):
-        return [bytes(x) for x in self.sectors]
-
     def _compact(self):
         offset = len(consts.NORCOW_MAGIC_AND_VERSION)
         data = list()
@@ -154,3 +151,6 @@ class Norcow:
         self.wipe((sector + 1) % consts.NORCOW_SECTOR_COUNT)
         for key, value in data:
             self._append(key, value)
+
+    def _dump(self):
+        return [bytes(x) for x in self.sectors]

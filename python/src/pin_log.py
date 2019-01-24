@@ -13,33 +13,6 @@ class PinLog:
         pin_entry_log = (~guard_mask & consts.ALL_FF_LOG) | guard
         self._write_log(guard_key, pin_success_log, pin_entry_log)
 
-    def _generate_guard_key(self) -> int:
-        while True:
-            r = prng.random_uniform(consts.GUARD_KEY_RANDOM_MAX)
-            r = (r * consts.GUARD_KEY_MODULUS + consts.GUARD_KEY_REMAINDER) & 0xFFFFFFFF
-            if self._check_guard_key(r):
-                return r
-
-    def _check_guard_key(self, guard_key: int) -> bool:
-        count = (guard_key & 0x22222222) + ((guard_key >> 2) & 0x22222222)
-        count = count + (count >> 4)
-
-        zero_runs = ~guard_key & 0xFFFFFFFF
-        zero_runs = zero_runs & (zero_runs >> 2)
-        zero_runs = zero_runs & (zero_runs >> 1)
-        zero_runs = zero_runs & (zero_runs >> 1)
-        one_runs = guard_key
-        one_runs = one_runs & (one_runs >> 2)
-        one_runs = one_runs & (one_runs >> 1)
-        one_runs = one_runs & (one_runs >> 1)
-
-        return (
-            ((count & 0x0E0E0E0E) == 0x04040404)
-            & (one_runs == 0)
-            & (zero_runs == 0)
-            & (guard_key % consts.GUARD_KEY_MODULUS == consts.GUARD_KEY_REMAINDER)
-        )
-
     def derive_guard_mask_and_value(self, guard_key: int) -> (int, int):
         if guard_key > 0xFFFFFFFF:
             raise ValueError("Invalid guard key")
@@ -91,6 +64,37 @@ class PinLog:
         log = ((log >> 1) | log) & helpers.expand_to_log_size(consts.LOW_MASK)
         log = log | (log << 1)
         return log
+
+    def _generate_guard_key(self) -> int:
+        while True:
+            r = prng.random_uniform(consts.GUARD_KEY_RANDOM_MAX)
+            r = (r * consts.GUARD_KEY_MODULUS + consts.GUARD_KEY_REMAINDER) & 0xFFFFFFFF
+            if self._check_guard_key(r):
+                return r
+
+    def _check_guard_key(self, guard_key: int) -> bool:
+        """
+        Checks if guard_key is congruent to 15 modulo 6311 and
+        some other conditions, see the docs.
+        """
+        count = (guard_key & 0x22222222) + ((guard_key >> 2) & 0x22222222)
+        count = count + (count >> 4)
+
+        zero_runs = ~guard_key & 0xFFFFFFFF
+        zero_runs = zero_runs & (zero_runs >> 2)
+        zero_runs = zero_runs & (zero_runs >> 1)
+        zero_runs = zero_runs & (zero_runs >> 1)
+        one_runs = guard_key
+        one_runs = one_runs & (one_runs >> 2)
+        one_runs = one_runs & (one_runs >> 1)
+        one_runs = one_runs & (one_runs >> 1)
+
+        return (
+            ((count & 0x0E0E0E0E) == 0x04040404)
+            & (one_runs == 0)
+            & (zero_runs == 0)
+            & (guard_key % consts.GUARD_KEY_MODULUS == consts.GUARD_KEY_REMAINDER)
+        )
 
     def _get_logs(self) -> (int, int, int):
         pin_log = self.norcow.get(consts.PIN_LOG_KEY)

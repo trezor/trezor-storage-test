@@ -60,7 +60,7 @@ def validate_pin(pin: int, salt: bytes, edek: bytes, pvc: bytes):
     return tag[: consts.PVC_SIZE] == pvc
 
 
-def calculate_hmacs(sak, keys) -> bytes:
+def calculate_hmacs(sak: bytes, keys: bytes) -> bytes:
     """
     This calculates HMAC-SHA-256(SAK, (XOR_i) HMAC-SHA-256(SAK, KEY_i)).
     In other words, it does HMAC for every KEY and XORs it all together.
@@ -69,11 +69,15 @@ def calculate_hmacs(sak, keys) -> bytes:
     hmacs = _hmac(sak, keys[0])
     for key in keys[1:]:
         hmacs = _xor(hmacs, _hmac(sak, key))
-    return _hmac(sak, hmacs)[: consts.SAT_SIZE]
+    return _final_hmac(sak, hmacs)
 
 
 def init_hmacs(sak: bytes) -> bytes:
-    return _hmac(sak, b"\x00" * hashes.SHA256.digest_size)[: consts.SAT_SIZE]
+    return _final_hmac(sak, b"\x00" * hashes.SHA256.digest_size)
+
+
+def _final_hmac(sak: bytes, data: bytes) -> bytes:
+    return _hmac(sak, data)[: consts.SAT_SIZE]
 
 
 def _hmac(key: bytes, data: bytes) -> bytes:
