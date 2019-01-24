@@ -1,8 +1,9 @@
 CC = gcc
 CFLAGS = -Wall -Wshadow -Wextra -Wpedantic -Werror -fPIC -DTREZOR_STORAGE_TEST
 LIBS =
-INC = -I ../vendor/trezor-crypto
-OBJ = storage.o norcow.o flash.o common.o
+INC = -I ../vendor/trezor-crypto -I ../vendor/trezor-storage -I .
+OBJ = flash.o common.o
+OBJ += ../vendor/trezor-storage/storage.o ../vendor/trezor-storage/norcow.o
 OBJ += ../vendor/trezor-crypto/pbkdf2.o
 OBJ += ../vendor/trezor-crypto/rand.o
 OBJ += ../vendor/trezor-crypto/chacha20poly1305/rfc7539.o

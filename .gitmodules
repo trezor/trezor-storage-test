@@ -1,3 +1,6 @@
 [submodule "trezor-crypto"]
 	path = vendor/trezor-crypto
 	url = https://github.com/trezor/trezor-crypto.git
+[submodule "vendor/trezor-storage"]
+	path = vendor/trezor-storage
+	url = https://github.com/trezor/trezor-storage.git
