@@ -11,6 +11,6 @@ before_script:
 
 all:
   script:
-    - pipenv run make style
+    - pipenv run make style_check
     - pipenv run make build
     - pipenv run make tests_all
