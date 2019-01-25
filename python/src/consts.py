@@ -118,6 +118,7 @@ NORCOW_KEY_FREE = 0xFFFF
 # | Protected | 1 <= APP <= 127   |
 # | Public    | 128 <= APP <= 255 |
 
+
 def is_app_public(app: int):
     if app & FLAG_PUBLIC:
         return True
