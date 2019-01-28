@@ -59,12 +59,12 @@ void flash_init(void)
     assert(FLASH_SIZE == FLASH_SECTOR_TABLE[FLASH_SECTOR_COUNT] - FLASH_SECTOR_TABLE[0]);
 }
 
-secbool flash_unlock(void)
+secbool flash_unlock_write(void)
 {
     return sectrue;
 }
 
-secbool flash_lock(void)
+secbool flash_lock_write(void)
 {
     return sectrue;
 }
