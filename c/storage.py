@@ -21,6 +21,9 @@ class Storage:
     def unlock(self, pin: int) -> bool:
         return sectrue == self.lib.storage_unlock(c.c_uint32(pin))
 
+    def lock(self) -> None:
+        self.lib.storage_lock()
+
     def has_pin(self) -> bool:
         return sectrue == self.lib.storage_has_pin()
 

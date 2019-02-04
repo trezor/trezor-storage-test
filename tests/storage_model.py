@@ -17,6 +17,9 @@ class StorageModel:
         self.pin_rem = self._PIN_MAX_TRIES
         self.dict = {}
 
+    def lock(self) -> None:
+        self.unlocked = False
+
     def unlock(self, pin: int) -> bool:
         if pin == self.pin:
             self.pin_rem = self._PIN_MAX_TRIES

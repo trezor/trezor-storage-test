@@ -44,8 +44,27 @@ def test_set_get():
         assert s.get(0xDEAD) == b"AAAAAAAAAAA"
         assert s.get(0x2200) == b"BBBB"
 
-        assert datasc == sc._dump()
-        assert datasp == sp._dump()
+    assert datasc == sc._dump()
+    assert datasp == sp._dump()
+
+    # test locked storage
+    for s in (sc, sp):
+        s.lock()
+        with pytest.raises(RuntimeError):
+            s.set(0xAAAA, b"test public")
+        with pytest.raises(RuntimeError):
+            s.set(0x0901, b"test protected")
+        with pytest.raises(RuntimeError):
+            s.get(0x0901)
+        assert s.get(0xAAAA) == b"something else"
+
+    # check that storage functions after unlock
+    for s in (sc, sp):
+        s.unlock(991)
+        s.set(0xAAAA, b"public")
+        s.set(0x0902, b"protected")
+        assert s.get(0xAAAA) == b"public"
+        assert s.get(0x0902) == b"protected"
 
     # test delete
     for s in (sc, sp):

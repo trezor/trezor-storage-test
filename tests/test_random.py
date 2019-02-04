@@ -52,6 +52,12 @@ class StorageComparison(RuleBasedStateMachine):
         assert len(set(s.change_pin(oldpin, newpin) for s in self.storages)) == 1
         self.ensure_unlocked()
 
+    @rule()
+    def lock(self):
+        for s in self.storages:
+            s.lock()
+        self.ensure_unlocked()
+
     @invariant()
     def values_agree(self):
         for k, v in self.sm:

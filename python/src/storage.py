@@ -79,6 +79,9 @@ class Storage:
 
         return is_valid
 
+    def lock(self) -> None:
+        self.unlocked = False
+
     def unlock(self, pin: int) -> bool:
         if not self.initialized or not self.check_pin(pin):
             return False
