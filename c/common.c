@@ -31,11 +31,6 @@ void __shutdown(void)
 
 void __fatal_error(const char *expr, const char *msg, const char *file, int line, const char *func)
 {
-    // For testing do not treat pin_fails_check_max as a fatal error.
-    if (msg != NULL && strcmp(msg, "pin_fails_check_max") == 0) {
-        return;
-    }
-
     printf("\nFATAL ERROR:\n");
     if (expr) {
         printf("expr: %s\n", expr);
@@ -50,4 +45,13 @@ void __fatal_error(const char *expr, const char *msg, const char *file, int line
         printf("func: %s\n", func);
     }
     __shutdown();
+}
+
+void error_shutdown(const char *line1, const char *line2, const char *line3, const char *line4) {
+    // For testing do not treat pin_fails_check_max as a fatal error.
+    (void) line1;
+    (void) line2;
+    (void) line3;
+    (void) line4;
+    return;
 }
