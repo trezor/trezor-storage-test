@@ -46,6 +46,11 @@ KEK_SIZE = 32
 # The length of KEIV in bytes.
 KEIV_SIZE = 12
 
+# Size of counter. 4B integer and 8B tail.
+COUNTER_TAIL = 12
+COUNTER_TAIL_SIZE = 8
+COUNTER_MAX_TAIL = 64
+
 # ----- PIN logs ----- #
 
 # Storage key of the PIN entry log and PIN success log.

@@ -102,20 +102,20 @@ class PinLog:
         guard_key = helpers.word_to_int(guard_key)
         guard_mask, guard = self.derive_guard_mask_and_value(guard_key)
         pin_entry_log = pin_log[consts.PIN_LOG_GUARD_KEY_SIZE + consts.PIN_LOG_SIZE :]
-        pin_entry_log = helpers.log_to_int_by_words(pin_entry_log)
+        pin_entry_log = helpers.to_int_by_words(pin_entry_log)
         pin_success_log = pin_log[
             consts.PIN_LOG_GUARD_KEY_SIZE : consts.PIN_LOG_GUARD_KEY_SIZE
             + consts.PIN_LOG_SIZE
         ]
-        pin_success_log = helpers.log_to_int_by_words(pin_success_log)
+        pin_success_log = helpers.to_int_by_words(pin_success_log)
 
         return guard_key, pin_success_log, pin_entry_log
 
     def _write_log(self, guard_key: int, pin_success_log: int, pin_entry_log: int):
         pin_log = (
             helpers.int_to_word(guard_key)
-            + helpers.log_to_bytes_by_words(pin_success_log)
-            + helpers.log_to_bytes_by_words(pin_entry_log)
+            + helpers.to_bytes_by_words(pin_success_log, consts.PIN_LOG_SIZE)
+            + helpers.to_bytes_by_words(pin_entry_log, consts.PIN_LOG_SIZE)
         )
         try:
             self.norcow.replace(consts.PIN_LOG_KEY, pin_log)

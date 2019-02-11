@@ -1,7 +1,7 @@
 import hashlib
 import sys
 
-from . import consts, crypto, prng
+from . import consts, crypto, helpers, prng
 from .norcow import Norcow
 from .pin_log import PinLog
 
@@ -126,6 +126,41 @@ class Storage:
         if consts.is_app_public(app):
             return self.nc.set(key, val)
         return self._set_encrypt(key, val)
+
+    def set_counter(self, key: int, val: int):
+        app = key >> 8
+        if not consts.is_app_public(app):
+            raise RuntimeError("Counter can be set only for public items")
+        counter = val.to_bytes(4, sys.byteorder) + bytearray(
+            b"\xFF" * consts.COUNTER_TAIL_SIZE
+        )
+        self.set(key, counter)
+
+    def next_counter(self, key: int) -> int:
+        app = key >> 8
+        if not self.initialized or not self.unlocked or not consts.is_app_public(app):
+            raise RuntimeError("Storage not initialized or locked or app is not public")
+
+        current = self.get(key)
+        if current is False:
+            self.set_counter(key, 0)
+            return 0
+
+        base = int.from_bytes(current[:4], sys.byteorder)
+        tail = helpers.to_int_by_words(current[4:])
+        tail_count = "{0:064b}".format(tail).count("0")
+        increased_count = base + tail_count + 1
+
+        if tail_count == consts.COUNTER_MAX_TAIL:
+            self.set_counter(key, increased_count)
+            return increased_count
+
+        self.set(
+            key,
+            current[:4]
+            + helpers.to_bytes_by_words(tail >> 1, consts.COUNTER_TAIL_SIZE),
+        )
+        return increased_count
 
     def delete(self, key: int) -> bool:
         app = key >> 8

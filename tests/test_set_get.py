@@ -144,13 +144,16 @@ def test_set_similar():
 def test_counter():
     sc, sp = common.init(unlock=True)
     for i in range(0, 200):
-        for s in (sc,):
+        for s in (sc, sp):
             assert i == s.next_counter(0xC001)
+        assert common.memory_equals(sc, sp)
 
-    for s in (sc,):
+    for s in (sc, sp):
         s.lock()
+    assert common.memory_equals(sc, sp)
 
-    s.set_counter(0xC001, 500)
+    sc.set_counter(0xC001, 500)
+    # sp.set_counter(0xC001, 500) TODO
     for i in range(501, 700):
         for s in (sc,):
             assert i == s.next_counter(0xC001)
