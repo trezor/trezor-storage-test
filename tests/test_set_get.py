@@ -146,7 +146,7 @@ def test_counter():
     for i in range(0, 200):
         for s in (sc,):
             assert i == s.next_counter(0xC001)
-            
+
     for s in (sc,):
         s.lock()
 
