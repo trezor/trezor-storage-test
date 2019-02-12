@@ -78,6 +78,10 @@ ALL_FF_LOG = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 # If the top bit of APP is set, then the value is not encrypted.
 FLAG_PUBLIC = 0x80
 
+# If the top two bits of APP are set, then the value is not encrypted and it
+# can be written even when the storage is locked.
+FLAG_WRITE = 0xC0
+
 # Length of word in bytes.
 WORD_SIZE = 4
 
@@ -140,3 +144,9 @@ def is_app_protected(app: int):
 
 def is_app_private(app: int):
     return app == PIN_APP_ID
+
+
+def is_app_lock_writable(app: int):
+    if app & FLAG_WRITE == FLAG_WRITE:
+        return True
+    return False

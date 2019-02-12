@@ -141,6 +141,25 @@ def test_set_similar():
     assert common.memory_equals(sc, sp)
 
 
+def test_set_locked():
+    sc, sp = common.init()
+    for s in (sc, sp):
+        with pytest.raises(RuntimeError):
+            s.set(0x0303, b"test")
+        with pytest.raises(RuntimeError):
+            s.set(0x8003, b"test")
+    assert common.memory_equals(sc, sp)
+
+    for s in (sc, sp):
+        s.set(0xC001, b"Ahoj")
+        s.set(0xC003, b"test")
+    assert common.memory_equals(sc, sp)
+
+    for s in (sc, sp):
+        s.get(0xC001) == b"Ahoj"
+        s.get(0xC003) == b"test"
+
+
 def test_counter():
     sc, sp = common.init(unlock=True)
     for i in range(0, 200):
@@ -150,10 +169,10 @@ def test_counter():
 
     for s in (sc, sp):
         s.lock()
+        s.set_counter(0xC001, 500)
     assert common.memory_equals(sc, sp)
 
-    sc.set_counter(0xC001, 500)
-    # sp.set_counter(0xC001, 500) TODO
     for i in range(501, 700):
-        for s in (sc,):
+        for s in (sc, sp):
             assert i == s.next_counter(0xC001)
+    assert common.memory_equals(sc, sp)

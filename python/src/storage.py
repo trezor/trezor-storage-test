@@ -121,8 +121,7 @@ class Storage:
 
     def set(self, key: int, val: bytes) -> bool:
         app = key >> 8
-        if not self.initialized or not self.unlocked or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized, locked or app is private")
+        self._check_lock(app)
         if consts.is_app_public(app):
             return self.nc.set(key, val)
         return self._set_encrypt(key, val)
@@ -138,8 +137,7 @@ class Storage:
 
     def next_counter(self, key: int) -> int:
         app = key >> 8
-        if not self.initialized or not self.unlocked or not consts.is_app_public(app):
-            raise RuntimeError("Storage not initialized or locked or app is not public")
+        self._check_lock(app)
 
         current = self.get(key)
         if current is False:
@@ -164,13 +162,18 @@ class Storage:
 
     def delete(self, key: int) -> bool:
         app = key >> 8
-        if not self.initialized or not self.unlocked or consts.is_app_private(app):
-            raise RuntimeError("Storage not initialized or locked or app is private")
+        self._check_lock(app)
         ret = self.nc.delete(key)
         if consts.is_app_protected(app):
             sat = self._calculate_authentication_tag()
             self.nc.set(consts.SAT_KEY, sat)
         return ret
+
+    def _check_lock(self, app: int):
+        if not self.initialized or consts.is_app_private(app):
+            raise RuntimeError("Storage not initialized or app is private")
+        if not self.unlocked and not consts.is_app_lock_writable(app):
+            raise RuntimeError("Storage locked and app is not public-writable")
 
     def _get_encrypted(self, key: int) -> bytes:
         if not consts.is_app_protected(key):
