@@ -4,7 +4,7 @@
 PIN_APP_ID = 0x00
 
 # Storage key of the combined salt, EDEK, ESEK and PIN verification code entry.
-EDEK_PVC_KEY = (PIN_APP_ID << 8) | 0x02
+EDEK_ESEK_PVC_KEY = (PIN_APP_ID << 8) | 0x02
 
 # Storage key of the PIN set flag.
 PIN_NOT_SET_KEY = (PIN_APP_ID << 8) | 0x03

@@ -41,22 +41,38 @@ def chacha_poly_decrypt(
     return chacha_output
 
 
-def validate_pin(pin: int, salt: bytes, edek: bytes, pvc: bytes):
+def decrypt_edek_esak(
+    pin: int, salt: bytes, edek_esak: bytes, pvc: bytes
+) -> (bytes, bytes):
     """
-    This a little bit hackish. We do not store the whole
-    authentication tag so we can't decrypt using ChaCha20Poly1305
-    because it obviously checks the tag first and fails.
-    So we are using the sole ChaCha20 cipher to decipher and then encrypt
-    again with Chacha20Poly1305 to get the tag and compare it to PVC.
+    Decrypts EDEK, ESAK to DEK, SAK and checks PIN in the process.
+    Raises:
+        InvalidPinError: if PIN is invalid
     """
     kek, keiv = derive_kek_keiv(salt, pin)
 
     algorithm = algorithms.ChaCha20(kek, (1).to_bytes(4, "little") + keiv)
     cipher = Cipher(algorithm, mode=None, backend=default_backend())
     decryptor = cipher.decryptor()
-    dek = decryptor.update(bytes(edek))
+    dek_sak = decryptor.update(bytes(edek_esak))
+    dek = dek_sak[: consts.DEK_SIZE]
+    sak = dek_sak[consts.DEK_SIZE :]
 
-    _, tag = chacha_poly_encrypt(kek, keiv, dek)
+    if not validate_pin(kek, keiv, dek_sak, pvc):
+        raise InvalidPinError("Invalid PIN")
+
+    return dek, sak
+
+
+def validate_pin(kek: bytes, keiv: bytes, dek_sak: bytes, pvc: bytes) -> bool:
+    """
+    This a little bit hackish. We do not store the whole
+    authentication tag so we can't decrypt using ChaCha20Poly1305
+    because it obviously checks the tag first and fails.
+    So we are using the sole ChaCha20 cipher to decipher and then encrypt
+    again with Chacha20Poly1305 here to get the tag and compare it to PVC.
+    """
+    _, tag = chacha_poly_encrypt(kek, keiv, dek_sak)
     return tag[: consts.PVC_SIZE] == pvc
 
 
@@ -88,3 +104,7 @@ def _hmac(key: bytes, data: bytes) -> bytes:
 
 def _xor(first: bytes, second: bytes) -> bytes:
     return bytes(a ^ b for a, b in zip(first, second))
+
+
+class InvalidPinError(ValueError):
+    pass

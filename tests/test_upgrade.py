@@ -1,5 +1,6 @@
 from c0.storage import Storage as StorageC0
 from c.storage import Storage as StorageC
+from python.src.storage import Storage as StoragePy
 
 from . import common
 
@@ -54,3 +55,21 @@ def test_upgrade():
     sc1.init(common.test_uid)
     assert sc1.get_pin_rem() == 6
     check_values(sc1)
+
+
+def test_python_set_sectors():
+    sp0 = StoragePy()
+    sp0.init(common.test_uid)
+    assert sp0.unlock(1)
+    set_values(sp0)
+    for _ in range(10):
+        assert not sp0.unlock(3)
+    assert sp0.get_pin_rem() == 6
+
+    sp1 = StoragePy()
+    sp1.nc._set_sectors(sp0._dump())
+    sp1.init(common.test_uid)
+    common.memory_equals(sp0, sp1)
+
+    assert sp1.get_pin_rem() == 6
+    check_values(sp1)

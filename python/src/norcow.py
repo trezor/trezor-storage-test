@@ -13,8 +13,18 @@ def align4_data(data):
 
 
 class Norcow:
+    def __init__(self):
+        self.sectors = None
+
     def init(self):
-        self.wipe()
+        if self.sectors:
+            for sector in range(consts.NORCOW_SECTOR_COUNT):
+                if self.sectors[sector][:8] == consts.NORCOW_MAGIC_AND_VERSION:
+                    self.active_sector = sector
+                    self.active_offset = len(consts.NORCOW_MAGIC_AND_VERSION)
+                    break
+        else:
+            self.wipe()
 
     def wipe(self, sector: int = 0):
         self.sectors = [
@@ -152,5 +162,13 @@ class Norcow:
         for key, value in data:
             self._append(key, value)
 
+    def _set_sectors(self, data):
+        if list(map(len, data)) != [
+            consts.NORCOW_SECTOR_SIZE,
+            consts.NORCOW_SECTOR_SIZE,
+        ]:
+            raise RuntimeError("Norcow: set_sectors called with invalid data length")
+        self.sectors = [bytearray(sector) for sector in data]
+
     def _dump(self):
-        return [bytes(x) for x in self.sectors]
+        return [bytes(sector) for sector in self.sectors]

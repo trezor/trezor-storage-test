@@ -13,7 +13,6 @@ class Storage:
         self.dek = None
         self.sak = None
         self.nc = Norcow()
-        self.nc.init()
         self.pin_log = PinLog(self.nc)
 
     def init(self, hardware_salt: bytes = b""):
@@ -22,9 +21,13 @@ class Storage:
         but we simplify things in the python version and suppose we are starting
         a new storage each time.
         """
+        self.nc.init()
         self.initialized = True
         self.hw_salt_hash = hashlib.sha256(hardware_salt).digest()
-        self._init_pin()
+
+        edek_esak_pvc = self.nc.get(consts.EDEK_ESEK_PVC_KEY)
+        if not edek_esak_pvc:
+            self._init_pin()
 
     def _init_pin(self):
         """
@@ -51,7 +54,7 @@ class Storage:
         # Pin Verification Code
         pvc = tag[: consts.PVC_SIZE]
 
-        self.nc.set(consts.EDEK_PVC_KEY, random_salt + edek_esak + pvc)
+        self.nc.set(consts.EDEK_ESEK_PVC_KEY, random_salt + edek_esak + pvc)
         if pin == consts.PIN_EMPTY:
             self._set_bool(consts.PIN_NOT_SET_KEY, True)
         else:
@@ -64,20 +67,22 @@ class Storage:
     def check_pin(self, pin: int) -> bool:
         self.pin_log.write_attempt()
 
-        data = self.nc.get(consts.EDEK_PVC_KEY)
+        data = self.nc.get(consts.EDEK_ESEK_PVC_KEY)
         salt = self.hw_salt_hash + data[: consts.PIN_SALT_SIZE]
         edek_esak = data[consts.PIN_SALT_SIZE : -consts.PVC_SIZE]
         pvc = data[-consts.PVC_SIZE :]
-        is_valid = crypto.validate_pin(pin, salt, edek_esak, pvc)
 
-        if is_valid:
+        try:
+            dek, sak = crypto.decrypt_edek_esak(pin, salt, edek_esak, pvc)
             self.pin_log.write_success()
-        else:
+            self.dek = dek
+            self.sak = sak
+            return True
+        except crypto.InvalidPinError:
             fails = self.pin_log.get_failures_count()
             if fails >= consts.PIN_MAX_TRIES:
                 self.wipe()
-
-        return is_valid
+            return False
 
     def lock(self) -> None:
         self.unlocked = False
