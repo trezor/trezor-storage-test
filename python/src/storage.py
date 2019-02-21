@@ -39,10 +39,9 @@ class Storage:
 
         self.nc.set(consts.SAT_KEY, crypto.init_hmacs(self.sak))
         self._set_encrypt(consts.VERSION_KEY, b"\x01\x00\x00\x00")
+        self.pin_log.init()
         self._set_pin(consts.PIN_EMPTY)
         self.unlocked = False
-
-        self.pin_log.init()
 
     def _set_pin(self, pin: int):
         random_salt = prng.random_buffer(consts.PIN_SALT_SIZE)

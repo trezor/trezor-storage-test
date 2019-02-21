@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from . import consts
+from . import consts, prng
 
 
 def derive_kek_keiv(salt: bytes, pin: int) -> (bytes, bytes):
@@ -73,6 +73,8 @@ def validate_pin(kek: bytes, keiv: bytes, dek_sak: bytes, pvc: bytes) -> bool:
     again with Chacha20Poly1305 here to get the tag and compare it to PVC.
     """
     _, tag = chacha_poly_encrypt(kek, keiv, dek_sak)
+    prng.random32()
+    prng.random32()
     return tag[: consts.PVC_SIZE] == pvc
 
 
