@@ -193,9 +193,10 @@ class Storage:
         data = self.nc.get(key)
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
-        chacha_input = data[consts.CHACHA_IV_SIZE :]
+        tag = data[consts.CHACHA_IV_SIZE : consts.CHACHA_IV_SIZE + consts.POLY1305_MAC_SIZE]
+        ciphertext = data[consts.CHACHA_IV_SIZE + consts.POLY1305_MAC_SIZE :]
         return crypto.chacha_poly_decrypt(
-            self.dek, key, iv, chacha_input, key.to_bytes(2, sys.byteorder)
+            self.dek, key, iv, ciphertext + tag, key.to_bytes(2, sys.byteorder)
         )
 
     def _set_encrypt(self, key: int, val: bytes):
@@ -213,7 +214,7 @@ class Storage:
         cipher_text, tag = crypto.chacha_poly_encrypt(
             self.dek, iv, val, key.to_bytes(2, sys.byteorder)
         )
-        return self.nc.replace(key, iv + cipher_text + tag)
+        return self.nc.replace(key, iv + tag + cipher_text)
 
     def _calculate_authentication_tag(self) -> bytes:
         keys = []
