@@ -193,7 +193,9 @@ class Storage:
         data = self.nc.get(key)
         iv = data[: consts.CHACHA_IV_SIZE]
         # cipher text with MAC
-        tag = data[consts.CHACHA_IV_SIZE : consts.CHACHA_IV_SIZE + consts.POLY1305_MAC_SIZE]
+        tag = data[
+            consts.CHACHA_IV_SIZE : consts.CHACHA_IV_SIZE + consts.POLY1305_MAC_SIZE
+        ]
         ciphertext = data[consts.CHACHA_IV_SIZE + consts.POLY1305_MAC_SIZE :]
         return crypto.chacha_poly_decrypt(
             self.dek, key, iv, ciphertext + tag, key.to_bytes(2, sys.byteorder)
